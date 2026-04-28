@@ -7,18 +7,24 @@ const App = () => {
   const [professionals, setProfessionals] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Automatically switch between localhost and Render URL
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+  // Force the live Render URL if the environment variable fails
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://YOUR-RENDER-APP-NAME.onrender.com';
 
   useEffect(() => {
     // Fetch real data from your MongoDB backend
     fetch(`${backendUrl}/api/professionals`)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error('Network response was not ok');
+        return res.json();
+      })
       .then(data => {
         setProfessionals(data);
         setLoading(false);
       })
-      .catch(err => console.error("Error fetching pros:", err));
+      .catch(err => {
+        console.error("Error fetching pros:", err);
+        setLoading(false); // Stop loading so we don't spin forever if it fails
+      });
   }, [backendUrl]);
 
   const categories = [
@@ -99,7 +105,10 @@ const App = () => {
                 </div>
                 
                 {loading ? (
-                    <p className="text-center text-gray-500 mt-10">Loading professionals...</p>
+                    <div className="text-center py-10">
+                        <i className="fas fa-spinner fa-spin text-teal-600 text-3xl mb-3"></i>
+                        <p className="text-gray-500 text-sm">Loading professionals...</p>
+                    </div>
                 ) : filteredPros.length === 0 ? (
                     <div className="text-center py-10 bg-white rounded-3xl border border-gray-100">
                         <i className="fas fa-search text-3xl text-gray-300 mb-3"></i>
