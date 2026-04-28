@@ -7,13 +7,15 @@ const App = () => {
   const [professionals, setProfessionals] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Booking States
+  // Overlays State
+  const [viewingProfile, setViewingProfile] = useState(null);
   const [bookingPro, setBookingPro] = useState(null);
   const [bookingData, setBookingData] = useState({ date: '', time: '10:00 AM', address: '' });
   const [isBookingSuccess, setIsBookingSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://servly-backend.onrender.com';
+  // Force the live Render URL if the environment variable fails
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://YOUR-RENDER-APP-NAME.onrender.com';
 
   useEffect(() => {
     fetch(`${backendUrl}/api/professionals`)
@@ -136,7 +138,11 @@ const App = () => {
                     </div>
                 ) : (
                     filteredPros.map(pro => (
-                        <div key={pro._id || pro.id} className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 mb-4">
+                        <div 
+                            key={pro._id || pro.id} 
+                            onClick={() => setViewingProfile(pro)} 
+                            className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 mb-4 hover:shadow-md transition cursor-pointer"
+                        >
                             <div className="flex items-center">
                                 <img src={pro.avatar} alt={pro.name} className="w-16 h-16 rounded-2xl object-cover mr-4" />
                                 <div className="flex-1">
@@ -147,7 +153,12 @@ const App = () => {
                                     <p className="text-xs text-gray-500 mt-1">{pro.title} • {pro.distance}</p>
                                     <div className="mt-3 flex justify-between items-center">
                                         <span className="text-sm font-bold text-primary">₦{pro.price.toLocaleString()}<span className="text-xs text-gray-400 font-normal">/hr</span></span>
-                                        <button onClick={() => setBookingPro(pro)} className="bg-primary text-white text-xs font-medium px-4 py-2 rounded-xl hover:bg-gray-800 transition">Book</button>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); setBookingPro(pro); }} 
+                                            className="bg-primary text-white text-xs font-medium px-4 py-2 rounded-xl hover:bg-gray-800 transition"
+                                        >
+                                            Book
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -157,10 +168,83 @@ const App = () => {
             </div>
         </div>
 
-        {/* Booking Overlay Modal */}
+        {/* ---------------- PROFESSIONAL PROFILE OVERLAY ---------------- */}
+        {viewingProfile && !bookingPro && (
+            <div className="absolute inset-0 bg-white z-40 flex flex-col animate-[slideLeft_0.3s_ease-out]">
+                {/* Profile Header */}
+                <div className="flex justify-between items-center p-6 bg-white border-b border-gray-100 sticky top-0 z-10">
+                    <button onClick={() => setViewingProfile(null)} className="h-10 w-10 rounded-full flex justify-center items-center bg-gray-50 text-gray-600 hover:bg-gray-200 transition">
+                        <i className="fas fa-chevron-left"></i>
+                    </button>
+                    <div className="flex space-x-3">
+                        <button className="h-10 w-10 rounded-full flex justify-center items-center bg-gray-50 text-gray-600 hover:bg-gray-200"><i className="far fa-heart"></i></button>
+                        <button className="h-10 w-10 rounded-full flex justify-center items-center bg-gray-50 text-gray-600 hover:bg-gray-200"><i className="fas fa-share-alt"></i></button>
+                    </div>
+                </div>
+
+                {/* Profile Scrollable Content */}
+                <div className="flex-1 overflow-y-auto pb-28">
+                    {/* Hero Image */}
+                    <div className="w-full h-48 bg-gray-100 flex items-center justify-center relative overflow-hidden">
+                        <img src={viewingProfile.avatar} className="w-full h-full object-cover blur-md opacity-40 absolute" alt="background blur" />
+                        <img src={viewingProfile.avatar} className="w-28 h-28 rounded-full border-4 border-white shadow-lg relative z-10 object-cover" alt="profile avatar" />
+                    </div>
+
+                    <div className="p-6">
+                        <div className="flex justify-between items-start mb-2">
+                            <div>
+                                <h1 className="text-2xl font-bold text-primary">{viewingProfile.name} {viewingProfile.verified && <i className="fas fa-check-circle text-teal-600 text-sm ml-1"></i>}</h1>
+                                <p className="text-teal-600 font-medium">{viewingProfile.title}</p>
+                            </div>
+                            <div className="flex flex-col items-end">
+                                <span className="text-xl font-bold text-primary">₦{viewingProfile.price.toLocaleString()}</span>
+                                <span className="text-xs text-gray-400">per hour</span>
+                            </div>
+                        </div>
+
+                        {/* Badges */}
+                        <div className="flex space-x-4 mb-6 border-b border-gray-100 pb-6 mt-4">
+                            <div className="flex items-center text-sm font-medium text-gray-600">
+                                <i className="fas fa-star text-orange-400 mr-2"></i> {viewingProfile.rating} ({viewingProfile.reviews} reviews)
+                            </div>
+                            <div className="flex items-center text-sm font-medium text-gray-600">
+                                <i className="fas fa-map-marker-alt text-gray-400 mr-2"></i> {viewingProfile.distance} away
+                            </div>
+                        </div>
+
+                        {/* About Section */}
+                        <h2 className="text-lg font-bold text-primary mb-3">About</h2>
+                        <p className="text-gray-500 text-sm leading-relaxed mb-6">
+                            Highly skilled and reliable professional with years of experience providing top-notch service. Committed to customer satisfaction, safety, and delivering high-quality results on every single job.
+                        </p>
+
+                        {/* Reviews Preview */}
+                        <h2 className="text-lg font-bold text-primary mb-3">Recent Reviews</h2>
+                        <div className="bg-gray-50 p-4 rounded-2xl mb-4 border border-gray-100">
+                            <div className="flex justify-between items-center mb-2">
+                                <div className="flex text-orange-400 text-xs">
+                                    <i className="fas fa-star"></i><i className="fas fa-star"></i><i className="fas fa-star"></i><i className="fas fa-star"></i><i className="fas fa-star"></i>
+                                </div>
+                                <span className="text-xs text-gray-400">2 days ago</span>
+                            </div>
+                            <p className="text-sm text-gray-600 font-medium">"Excellent service! Arrived on time and did a fantastic job. Highly recommended."</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Bottom Book Bar */}
+                <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-6 py-4 pb-8 z-20 md:rounded-b-[2.5rem]">
+                    <button onClick={() => setBookingPro(viewingProfile)} className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl hover:bg-teal-700 transition shadow-lg shadow-teal-600/30">
+                        Book Service Now
+                    </button>
+                </div>
+            </div>
+        )}
+
+        {/* ---------------- BOOKING OVERLAY MODAL ---------------- */}
         {bookingPro && (
             <div className="absolute inset-0 bg-white z-50 flex flex-col animate-[slideUp_0.3s_ease-out]">
-                <div className="flex justify-between items-center p-6 border-b border-gray-100">
+                <div className="flex justify-between items-center p-6 border-b border-gray-100 sticky top-0 bg-white">
                     <h2 className="font-bold text-xl text-primary">Book Service</h2>
                     <button onClick={closeBooking} className="bg-gray-100 h-10 w-10 rounded-full flex justify-center items-center text-gray-500 hover:bg-gray-200"><i className="fas fa-times"></i></button>
                 </div>
@@ -175,9 +259,9 @@ const App = () => {
                         <button onClick={closeBooking} className="w-full bg-primary text-white font-bold py-4 rounded-2xl hover:bg-gray-800 transition">Done</button>
                     </div>
                 ) : (
-                    <form onSubmit={handleBookingSubmit} className="flex-1 overflow-y-auto p-6 flex flex-col">
+                    <form onSubmit={handleBookingSubmit} className="flex-1 overflow-y-auto p-6 flex flex-col pb-28">
                         <div className="bg-gray-50 p-4 rounded-2xl flex items-center mb-6 border border-gray-100">
-                            <img src={bookingPro.avatar} className="w-12 h-12 rounded-xl object-cover mr-4" />
+                            <img src={bookingPro.avatar} className="w-12 h-12 rounded-xl object-cover mr-4" alt="avatar"/>
                             <div>
                                 <p className="font-bold text-primary">{bookingPro.name}</p>
                                 <p className="text-xs text-teal-600 font-medium">{bookingPro.title}</p>
@@ -199,12 +283,12 @@ const App = () => {
                         <label className="text-sm font-bold text-primary mb-2">Address</label>
                         <textarea required placeholder="House number, street, city..." className="w-full bg-gray-50 border border-gray-200 p-4 rounded-xl mb-6 h-28 outline-none focus:ring-2 focus:ring-teal-600 resize-none" value={bookingData.address} onChange={e => setBookingData({...bookingData, address: e.target.value})}></textarea>
 
-                        <div className="mt-auto">
+                        <div className="mt-auto pt-6 border-t border-gray-100">
                             <div className="flex justify-between items-center mb-4">
                                 <span className="text-gray-500 font-medium">Total Cost:</span>
                                 <span className="text-xl font-bold text-primary">₦{bookingPro.price.toLocaleString()}</span>
                             </div>
-                            <button type="submit" disabled={isSubmitting} className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl hover:bg-teal-700 transition disabled:opacity-50">
+                            <button type="submit" disabled={isSubmitting} className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl hover:bg-teal-700 transition shadow-lg shadow-teal-600/30 disabled:opacity-50">
                                 {isSubmitting ? 'Confirming...' : 'Confirm Booking'}
                             </button>
                         </div>
@@ -230,10 +314,8 @@ const App = () => {
         </div>
 
         <style>{`
-          @keyframes slideUp {
-            from { transform: translateY(100%); }
-            to { transform: translateY(0); }
-          }
+          @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+          @keyframes slideLeft { from { transform: translateX(100%); } to { transform: translateX(0); } }
         `}</style>
     </div>
   );
