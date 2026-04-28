@@ -25,12 +25,12 @@ app.get('/', (req, res) => {
 // API Endpoint to fetch all professionals
 app.get('/api/professionals', async (req, res) => {
   try {
-    // Check if the database has any professionals
-    let pros = await Professional.find();
+    // Attempt to fetch from MongoDB
+    const pros = await Professional.find();
     
-    // If the database is empty, immediately return the sample data directly!
-    if (pros.length === 0) {
-      console.log("Database is empty, returning hardcoded fallback data.");
+    // If MongoDB returns an empty array, send fallback data immediately
+    if (!pros || pros.length === 0) {
+      console.log("Database returned 0 professionals. Sending hardcoded fallback data.");
       return res.json([
         { _id: "1", name: 'Ibrahim Musa', category: 'electric', title: 'Master Electrician', rating: 4.9, reviews: 120, distance: '2.5km', price: 15000, verified: true, avatar: 'https://i.pravatar.cc/150?img=33' },
         { _id: "2", name: 'Amina Yusuf', category: 'cleaning', title: 'Deep Cleaning Pro', rating: 4.7, reviews: 85, distance: '4.1km', price: 10000, verified: true, avatar: 'https://i.pravatar.cc/150?img=47' },
@@ -39,10 +39,15 @@ app.get('/api/professionals', async (req, res) => {
       ]);
     }
     
-    // Otherwise return the real database data
+    // If MongoDB has real data, send it to the frontend
     res.json(pros);
   } catch (error) {
     console.error('Error fetching professionals:', error);
     res.status(500).json({ message: 'Server Error' });
   }
+});
+
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
