@@ -15,7 +15,7 @@ const App = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Force the live Render URL if the environment variable fails
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://YOUR-RENDER-APP-NAME.onrender.com';
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://service-app-backend-121o.onrender.com';
 
   useEffect(() => {
     fetch(`${backendUrl}/api/professionals`)
