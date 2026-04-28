@@ -25,36 +25,24 @@ app.get('/', (req, res) => {
 // API Endpoint to fetch all professionals
 app.get('/api/professionals', async (req, res) => {
   try {
-    const pros = await Professional.find();
+    // Check if the database has any professionals
+    let pros = await Professional.find();
+    
+    // If the database is empty, immediately return the sample data directly!
+    if (pros.length === 0) {
+      console.log("Database is empty, returning hardcoded fallback data.");
+      return res.json([
+        { _id: "1", name: 'Ibrahim Musa', category: 'electric', title: 'Master Electrician', rating: 4.9, reviews: 120, distance: '2.5km', price: 15000, verified: true, avatar: 'https://i.pravatar.cc/150?img=33' },
+        { _id: "2", name: 'Amina Yusuf', category: 'cleaning', title: 'Deep Cleaning Pro', rating: 4.7, reviews: 85, distance: '4.1km', price: 10000, verified: true, avatar: 'https://i.pravatar.cc/150?img=47' },
+        { _id: "3", name: 'Samuel Obi', category: 'plumbing', title: 'Expert Plumber', rating: 4.8, reviews: 210, distance: '1.2km', price: 12000, verified: true, avatar: 'https://i.pravatar.cc/150?img=11' },
+        { _id: "4", name: 'David Okafor', category: 'ac', title: 'HVAC Technician', rating: 4.5, reviews: 42, distance: '3.0km', price: 18000, verified: false, avatar: 'https://i.pravatar.cc/150?img=60' }
+      ]);
+    }
+    
+    // Otherwise return the real database data
     res.json(pros);
   } catch (error) {
     console.error('Error fetching professionals:', error);
     res.status(500).json({ message: 'Server Error' });
   }
-});
-
-// Auto-seed sample data if the database is empty
-const seedDatabase = async () => {
-  try {
-    const count = await Professional.countDocuments();
-    if (count === 0) {
-      await Professional.insertMany([
-        { name: 'Ibrahim Musa', category: 'electric', title: 'Master Electrician', rating: 4.9, reviews: 120, distance: '2.5km', price: 15000, verified: true, avatar: 'https://i.pravatar.cc/150?img=33' },
-        { name: 'Amina Yusuf', category: 'cleaning', title: 'Deep Cleaning Pro', rating: 4.7, reviews: 85, distance: '4.1km', price: 10000, verified: true, avatar: 'https://i.pravatar.cc/150?img=47' },
-        { name: 'Samuel Obi', category: 'plumbing', title: 'Expert Plumber', rating: 4.8, reviews: 210, distance: '1.2km', price: 12000, verified: true, avatar: 'https://i.pravatar.cc/150?img=11' },
-        { name: 'David Okafor', category: 'ac', title: 'HVAC Technician', rating: 4.5, reviews: 42, distance: '3.0km', price: 18000, verified: false, avatar: 'https://i.pravatar.cc/150?img=60' }
-      ]);
-      console.log('Sample professionals added to MongoDB!');
-    }
-  } catch (err) {
-    console.error('Seeding error:', err);
-  }
-};
-
-// Run the seeder
-seedDatabase();
-
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
 });
