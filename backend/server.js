@@ -4,12 +4,14 @@ const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs'); // <-- Added Password Encryption
 const connectDB = require('./config/db');
 
-// Models
+// Models & Middleware
 const Professional = require('./models/Professional');
 const Booking = require('./models/Booking');
-const User = require('./models/User'); // Ensure backend/models/User.js exists!
+const User = require('./models/User');
+const auth = require('./middleware/auth'); // <-- Your new Security Firewall
 
 connectDB();
 
@@ -20,42 +22,30 @@ const io = new Server(server, { cors: { origin: '*' } });
 app.use(cors());
 app.use(express.json());
 
-app.get('/', (req, res) => res.send('Servly API is running!'));
-
 // ================= AUTHENTICATION ROUTES ================= //
 
 app.post('/api/signup', async (req, res) => {
   try {
     const { name, email, password } = req.body;
     
-    // 1. Validate input
-    if (!name || !email || !password) {
-      return res.status(400).json({ message: "Please fill in all fields" });
-    }
+    if (!name || !email || !password) return res.status(400).json({ message: "Please fill in all fields" });
 
-    // 2. Check if user already exists
     let existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ message: "A user with this email already exists" });
-    }
+    if (existingUser) return res.status(400).json({ message: "A user with this email already exists" });
 
-    // 3. Create new user
-    const user = new User({ name, email, password });
+    // ENCRYPT PASSWORD
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const user = new User({ name, email, password: hashedPassword });
     await user.save();
 
-    // 4. Generate JWT Token
-    const token = jwt.sign(
-      { userId: user._id, name: user.name }, 
-      process.env.JWT_SECRET || 'fallback_secret', 
-      { expiresIn: '7d' }
-    );
-    
-    // 5. Send success response
+    const token = jwt.sign({ userId: user._id, name: user.name }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '7d' });
     res.status(201).json({ token, user: { id: user._id, name: user.name, email: user.email } });
 
   } catch (error) {
     console.error("Signup Error:", error);
-    res.status(500).json({ message: "Server error during signup. Please try again." });
+    res.status(500).json({ message: "Server error during signup." });
   }
 });
 
@@ -63,59 +53,44 @@ app.post('/api/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     
-    // 1. Validate input
-    if (!email || !password) {
-      return res.status(400).json({ message: "Please provide email and password" });
-    }
+    if (!email || !password) return res.status(400).json({ message: "Please provide email and password" });
 
-    // 2. Find user
     const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ message: "Invalid email or password" });
-    }
+    if (!user) return res.status(400).json({ message: "Invalid email or password" });
 
-    // 3. Check password
-    if (user.password !== password) {
-      return res.status(400).json({ message: "Invalid email or password" });
-    }
+    // VERIFY ENCRYPTED PASSWORD
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
 
-    // 4. Generate JWT Token
-    const token = jwt.sign(
-      { userId: user._id, name: user.name }, 
-      process.env.JWT_SECRET || 'fallback_secret', 
-      { expiresIn: '7d' }
-    );
-    
-    // 5. Send success response
+    const token = jwt.sign({ userId: user._id, name: user.name }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '7d' });
     res.status(200).json({ token, user: { id: user._id, name: user.name, email: user.email } });
 
   } catch (error) {
     console.error("Login Error:", error);
-    res.status(500).json({ message: "Server error during login. Please try again." });
+    res.status(500).json({ message: "Server error during login." });
   }
 });
 
-
 // ================= DATA ROUTES ================= //
 
+// Public route: Anyone can see professionals
 app.get('/api/professionals', async (req, res) => {
   try {
     const pros = await Professional.find();
-    if (!pros || pros.length === 0) {
-      return res.json([
-        { _id: "1", name: 'Ibrahim Musa', category: 'electric', title: 'Master Electrician', rating: 4.9, reviews: 120, distance: '2.5km', price: 15000, verified: true, avatar: 'https://i.pravatar.cc/150?img=33' },
-        { _id: "2", name: 'Amina Yusuf', category: 'cleaning', title: 'Deep Cleaning Pro', rating: 4.7, reviews: 85, distance: '4.1km', price: 10000, verified: true, avatar: 'https://i.pravatar.cc/150?img=47' }
-      ]);
-    }
     res.json(pros);
   } catch (error) { 
     res.status(500).json({ message: 'Server Error fetching professionals' }); 
   }
 });
 
-app.post('/api/bookings', async (req, res) => {
+// PROTECTED ROUTE: Must pass through the Auth Firewall!
+app.post('/api/bookings', auth, async (req, res) => {
   try {
-    const newBooking = new Booking(req.body);
+    // We can now safely force the clientName to be the verified logged-in user
+    const newBooking = new Booking({
+        ...req.body,
+        clientName: req.user.name 
+    });
     const savedBooking = await newBooking.save();
     res.status(201).json(savedBooking);
   } catch (error) { 
@@ -123,11 +98,11 @@ app.post('/api/bookings', async (req, res) => {
   }
 });
 
-app.get('/api/bookings', async (req, res) => {
+// PROTECTED ROUTE: Must pass through the Auth Firewall!
+app.get('/api/bookings', auth, async (req, res) => {
   try {
-    // Only find bookings for the logged-in user
-    const filter = req.query.userId ? { clientName: req.query.userId } : {};
-    const bookings = await Booking.find(filter).sort({ createdAt: -1 });
+    // Safely fetch ONLY the bookings belonging to the verified token user
+    const bookings = await Booking.find({ clientName: req.user.name }).sort({ createdAt: -1 });
     res.json(bookings);
   } catch (error) { 
     res.status(500).json({ message: 'Failed to fetch bookings' }); 
