@@ -9,7 +9,7 @@ const connectDB = require('./config/db');
 // Models
 const Professional = require('./models/Professional');
 const Booking = require('./models/Booking');
-const User = require('./models/User'); // We created this empty shell earlier!
+const User = require('./models/User'); // Ensure backend/models/User.js exists!
 
 connectDB();
 
@@ -28,20 +28,34 @@ app.post('/api/signup', async (req, res) => {
   try {
     const { name, email, password } = req.body;
     
-    // Check if user already exists
-    let existingUser = await User.findOne({ email });
-    if (existingUser) return res.status(400).json({ message: "User already exists" });
+    // 1. Validate input
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: "Please fill in all fields" });
+    }
 
-    // Create new user (In production, use bcrypt to hash the password!)
+    // 2. Check if user already exists
+    let existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: "A user with this email already exists" });
+    }
+
+    // 3. Create new user
     const user = new User({ name, email, password });
     await user.save();
 
-    // Generate JWT Token
-    const token = jwt.sign({ userId: user._id, name: user.name }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '7d' });
+    // 4. Generate JWT Token
+    const token = jwt.sign(
+      { userId: user._id, name: user.name }, 
+      process.env.JWT_SECRET || 'fallback_secret', 
+      { expiresIn: '7d' }
+    );
     
+    // 5. Send success response
     res.status(201).json({ token, user: { id: user._id, name: user.name, email: user.email } });
+
   } catch (error) {
-    res.status(500).json({ message: "Server error during signup" });
+    console.error("Signup Error:", error);
+    res.status(500).json({ message: "Server error during signup. Please try again." });
   }
 });
 
@@ -49,18 +63,35 @@ app.post('/api/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     
-    // Find user
+    // 1. Validate input
+    if (!email || !password) {
+      return res.status(400).json({ message: "Please provide email and password" });
+    }
+
+    // 2. Find user
     const user = await User.findOne({ email });
-    if (!user || user.password !== password) {
+    if (!user) {
       return res.status(400).json({ message: "Invalid email or password" });
     }
 
-    // Generate JWT Token
-    const token = jwt.sign({ userId: user._id, name: user.name }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '7d' });
+    // 3. Check password
+    if (user.password !== password) {
+      return res.status(400).json({ message: "Invalid email or password" });
+    }
+
+    // 4. Generate JWT Token
+    const token = jwt.sign(
+      { userId: user._id, name: user.name }, 
+      process.env.JWT_SECRET || 'fallback_secret', 
+      { expiresIn: '7d' }
+    );
     
+    // 5. Send success response
     res.status(200).json({ token, user: { id: user._id, name: user.name, email: user.email } });
+
   } catch (error) {
-    res.status(500).json({ message: "Server error during login" });
+    console.error("Login Error:", error);
+    res.status(500).json({ message: "Server error during login. Please try again." });
   }
 });
 
@@ -77,7 +108,9 @@ app.get('/api/professionals', async (req, res) => {
       ]);
     }
     res.json(pros);
-  } catch (error) { res.status(500).json({ message: 'Server Error' }); }
+  } catch (error) { 
+    res.status(500).json({ message: 'Server Error fetching professionals' }); 
+  }
 });
 
 app.post('/api/bookings', async (req, res) => {
@@ -85,17 +118,20 @@ app.post('/api/bookings', async (req, res) => {
     const newBooking = new Booking(req.body);
     const savedBooking = await newBooking.save();
     res.status(201).json(savedBooking);
-  } catch (error) { res.status(500).json({ message: 'Failed to create booking' }); }
+  } catch (error) { 
+    res.status(500).json({ message: 'Failed to create booking' }); 
+  }
 });
 
-// Update Bookings to accept a userId query parameter
 app.get('/api/bookings', async (req, res) => {
   try {
-    // If a userId is passed, only find bookings for that user
+    // Only find bookings for the logged-in user
     const filter = req.query.userId ? { clientName: req.query.userId } : {};
     const bookings = await Booking.find(filter).sort({ createdAt: -1 });
     res.json(bookings);
-  } catch (error) { res.status(500).json({ message: 'Failed to fetch bookings' }); }
+  } catch (error) { 
+    res.status(500).json({ message: 'Failed to fetch bookings' }); 
+  }
 });
 
 const PORT = process.env.PORT || 5000;
