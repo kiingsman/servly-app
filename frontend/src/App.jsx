@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
-const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://service-app-backend-121o.onrender.com';
+const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://service-app-backend-1210.onrender.com';
 
 // ==========================================
 // AUTHENTICATION SCREEN
@@ -104,6 +104,7 @@ const MainApp = () => {
   const [isBookingSuccess, setIsBookingSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Fetch all professionals (Public Route - No token needed)
   useEffect(() => {
     fetch(`${backendUrl}/api/professionals`)
       .then(res => res.json())
@@ -111,24 +112,36 @@ const MainApp = () => {
       .catch(err => { console.error(err); setLoadingPros(false); });
   }, []);
 
+  // Fetch ONLY this user's bookings (Protected Route - Token Required!)
   useEffect(() => {
     if (activeTab === 'bookings') {
       setLoadingBookings(true);
-      fetch(`${backendUrl}/api/bookings?userId=${user.name}`) // <-- Fetch ONLY this user's bookings!
-        .then(res => res.json())
+      const token = localStorage.getItem('servly_token');
+
+      fetch(`${backendUrl}/api/bookings`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+        .then(res => {
+            if (res.status === 401) {
+                logout(); // If token is expired or invalid, log them out immediately
+                throw new Error("Session expired. Please log in again.");
+            }
+            return res.json();
+        })
         .then(data => { setMyBookings(data); setLoadingBookings(false); })
         .catch(err => { console.error(err); setLoadingBookings(false); });
     }
-  }, [activeTab, user.name]);
+  }, [activeTab, logout]);
 
+  // Create a new booking (Protected Route - Token Required!)
   const handleBookingSubmit = (e) => {
     e.preventDefault();
     setIsSubmitting(true);
+    const token = localStorage.getItem('servly_token');
 
     const payload = {
       professionalId: bookingPro._id || bookingPro.id,
       professionalName: bookingPro.name,
-      clientName: user.name, // <-- Save the real user's name!
       date: bookingData.date,
       time: bookingData.time,
       address: bookingData.address,
@@ -137,10 +150,19 @@ const MainApp = () => {
 
     fetch(`${backendUrl}/api/bookings`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+      },
       body: JSON.stringify(payload)
     })
-    .then(res => res.json())
+    .then(res => {
+        if (res.status === 401) {
+            logout();
+            throw new Error("Session expired. Please log in again.");
+        }
+        return res.json();
+    })
     .then(() => {
       setIsSubmitting(false);
       setIsBookingSuccess(true);
@@ -264,7 +286,7 @@ const MainApp = () => {
           </div>
         )}
 
-        {/* --- PROFILE TAB (NEW!) --- */}
+        {/* --- PROFILE TAB --- */}
         {activeTab === 'profile' && (
           <div className="flex-1 overflow-y-auto px-6 pt-10 pb-28 bg-gray-50">
             <h2 className="text-2xl font-bold text-primary mb-6">My Account</h2>
