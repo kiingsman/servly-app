@@ -29,8 +29,19 @@ const AuthScreen = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Something went wrong');
+      
+      const contentType = res.headers.get('content-type') || '';
+      const isJson = contentType.includes('application/json');
+      const data = isJson ? await res.json() : await res.text();
+
+      if (!res.ok) {
+         throw new Error(isJson ? (data.message || 'Something went wrong') : 'Server returned an invalid format. Please check the backend URL.');
+      }
+
+      if (!isJson) {
+         throw new Error('Server returned HTML instead of JSON. The backend URL might be incorrect.');
+      }
+
       login(data.user, data.token);
     } catch (err) {
       setError(err.message);
@@ -107,7 +118,13 @@ const MainApp = () => {
   // Fetch all professionals (Public Route - No token needed)
   useEffect(() => {
     fetch(`${backendUrl}/api/professionals`)
-      .then(res => res.json())
+      .then(res => {
+         const contentType = res.headers.get('content-type');
+         if (!contentType || !contentType.includes('application/json')) {
+             throw new TypeError("Oops, we haven't got JSON!");
+         }
+         return res.json();
+      })
       .then(data => { setProfessionals(data); setLoadingPros(false); })
       .catch(err => { console.error(err); setLoadingPros(false); });
   }, []);
@@ -119,11 +136,19 @@ const MainApp = () => {
       fetch(`${backendUrl}/api/bookings`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } // <-- SEND TOKEN
       })
-        .then(res => res.json())
+        .then(res => {
+            if (res.status === 401) {
+               logout();
+               throw new Error("Session expired.");
+            }
+            const contentType = res.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) throw new TypeError("Not JSON");
+            return res.json();
+        })
         .then(data => { setMyBookings(data); setLoadingBookings(false); })
         .catch(err => { console.error(err); setLoadingBookings(false); });
     }
-  }, [activeTab, backendUrl]);
+  }, [activeTab, logout]); // Removed backendUrl from dependencies
 
   // Create a new booking (Protected Route - Token Required!)
   const handleBookingSubmit = (e) => {
@@ -185,13 +210,13 @@ const MainApp = () => {
             <div className="px-6 pt-10 pb-4 bg-white rounded-b-3xl shadow-sm z-10 relative">
                 <div className="flex justify-between items-center mb-6">
                     <div>
-                        <p className="text-xs text-gray-500 font-medium">Hello, {user.name.split(' ')[0]} 👋</p>
+                        <p className="text-xs text-gray-500 font-medium">Hello, {user?.name?.split(' ')[0] || 'Guest'} 👋</p>
                         <div className="flex items-center text-primary font-bold text-lg mt-1">
                             <i className="fas fa-map-marker-alt text-teal-600 mr-2"></i>Kano, NG
                         </div>
                     </div>
                     <div className="w-10 h-10 bg-teal-100 text-teal-600 font-bold rounded-full flex items-center justify-center">
-                      {user.name.charAt(0).toUpperCase()}
+                      {user?.name?.charAt(0).toUpperCase() || 'G'}
                     </div>
                 </div>
                 <div className="relative flex items-center">
@@ -284,10 +309,10 @@ const MainApp = () => {
             <h2 className="text-2xl font-bold text-primary mb-6">My Account</h2>
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6 text-center">
               <div className="w-24 h-24 bg-teal-100 text-teal-600 rounded-full flex items-center justify-center text-4xl font-bold mx-auto mb-4 border-4 border-white shadow-md">
-                {user.name.charAt(0).toUpperCase()}
+                {user?.name?.charAt(0).toUpperCase() || 'G'}
               </div>
-              <h3 className="font-bold text-xl text-primary">{user.name}</h3>
-              <p className="text-gray-500 text-sm mb-6">{user.email}</p>
+              <h3 className="font-bold text-xl text-primary">{user?.name || 'User'}</h3>
+              <p className="text-gray-500 text-sm mb-6">{user?.email || ''}</p>
               <button onClick={logout} className="bg-red-50 text-red-500 font-bold py-3 px-8 rounded-xl hover:bg-red-100 transition w-full">
                 Log Out
               </button>
