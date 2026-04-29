@@ -116,22 +116,14 @@ const MainApp = () => {
   useEffect(() => {
     if (activeTab === 'bookings') {
       setLoadingBookings(true);
-      const token = localStorage.getItem('servly_token');
-
       fetch(`${backendUrl}/api/bookings`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } // <-- SEND TOKEN
       })
-        .then(res => {
-            if (res.status === 401) {
-                logout(); // If token is expired or invalid, log them out immediately
-                throw new Error("Session expired. Please log in again.");
-            }
-            return res.json();
-        })
+        .then(res => res.json())
         .then(data => { setMyBookings(data); setLoadingBookings(false); })
         .catch(err => { console.error(err); setLoadingBookings(false); });
     }
-  }, [activeTab, logout]);
+  }, [activeTab, backendUrl]);
 
   // Create a new booking (Protected Route - Token Required!)
   const handleBookingSubmit = (e) => {
