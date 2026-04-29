@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
-const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://YOUR-RENDER-APP-NAME.onrender.com';
+const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://service-app-backend-121o.onrender.com';
 
 // ==========================================
 // AUTHENTICATION SCREEN
