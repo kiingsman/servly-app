@@ -7,20 +7,23 @@ const connectDB = require('./config/db');
 const Professional = require('./models/Professional');
 const Booking = require('./models/Booking');
 
+// Connect to MongoDB
 connectDB();
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 
+// Basic Health Route
 app.get('/', (req, res) => {
-  res.send('Servly Backend is Running!');
+  res.send('Servly Backend is Running and Connected to MongoDB!');
 });
 
-// Fetch Professionals
+// API Endpoint to fetch all professionals
 app.get('/api/professionals', async (req, res) => {
   try {
     const pros = await Professional.find();
@@ -34,11 +37,12 @@ app.get('/api/professionals', async (req, res) => {
     }
     res.json(pros);
   } catch (error) {
+    console.error('Error fetching professionals:', error);
     res.status(500).json({ message: 'Server Error' });
   }
 });
 
-// Create a new Booking
+// API Endpoint to CREATE a new Booking
 app.post('/api/bookings', async (req, res) => {
   try {
     const newBooking = new Booking(req.body);
@@ -47,6 +51,18 @@ app.post('/api/bookings', async (req, res) => {
   } catch (error) {
     console.error('Error saving booking:', error);
     res.status(500).json({ message: 'Failed to create booking' });
+  }
+});
+
+// API Endpoint to GET all Bookings (New!)
+app.get('/api/bookings', async (req, res) => {
+  try {
+    // Fetch all bookings, sorted by newest created first
+    const bookings = await Booking.find().sort({ createdAt: -1 });
+    res.json(bookings);
+  } catch (error) {
+    console.error('Error fetching bookings:', error);
+    res.status(500).json({ message: 'Failed to fetch bookings' });
   }
 });
 

@@ -5,7 +5,11 @@ const App = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [professionals, setProfessionals] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingPros, setLoadingPros] = useState(true);
+
+  // Bookings Data States
+  const [myBookings, setMyBookings] = useState([]);
+  const [loadingBookings, setLoadingBookings] = useState(false);
 
   // Overlays State
   const [viewingProfile, setViewingProfile] = useState(null);
@@ -15,23 +19,29 @@ const App = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Force the live Render URL if the environment variable fails
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://service-app-backend-121o.onrender.com';
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://YOUR-RENDER-APP-NAME.onrender.com';
 
+  // Fetch Professionals on load
   useEffect(() => {
     fetch(`${backendUrl}/api/professionals`)
       .then(res => {
-        if (!res.ok) throw new Error('Network response was not ok');
+        if (!res.ok) throw new Error('Network error');
         return res.json();
       })
-      .then(data => {
-        setProfessionals(data);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error("Error fetching pros:", err);
-        setLoading(false);
-      });
+      .then(data => { setProfessionals(data); setLoadingPros(false); })
+      .catch(err => { console.error("Error:", err); setLoadingPros(false); });
   }, [backendUrl]);
+
+  // Fetch Bookings when the user switches to the Bookings tab
+  useEffect(() => {
+    if (activeTab === 'bookings') {
+      setLoadingBookings(true);
+      fetch(`${backendUrl}/api/bookings`)
+        .then(res => res.json())
+        .then(data => { setMyBookings(data); setLoadingBookings(false); })
+        .catch(err => { console.error("Error:", err); setLoadingBookings(false); });
+    }
+  }, [activeTab, backendUrl]);
 
   const handleBookingSubmit = (e) => {
     e.preventDefault();
@@ -55,11 +65,10 @@ const App = () => {
     .then(() => {
       setIsSubmitting(false);
       setIsBookingSuccess(true);
+      // If we are on the bookings tab, refresh the list
+      if (activeTab === 'bookings') setActiveTab('home'); 
     })
-    .catch(err => {
-      console.error("Booking error:", err);
-      setIsSubmitting(false);
-    });
+    .catch(err => { console.error("Error:", err); setIsSubmitting(false); });
   };
 
   const closeBooking = () => {
@@ -84,112 +93,149 @@ const App = () => {
   return (
     <div className="bg-bgLight w-full max-w-md mx-auto h-screen md:h-[850px] md:rounded-[2.5rem] md:shadow-2xl relative overflow-hidden md:border-8 md:border-gray-900 flex flex-col">
         
-        {/* Header */}
-        <div className="px-6 pt-10 pb-4 bg-white rounded-b-3xl shadow-sm z-10 relative">
-            <div className="flex justify-between items-center mb-6">
-                <div>
-                    <p className="text-xs text-gray-500 font-medium">Current Location</p>
-                    <div className="flex items-center text-primary font-bold text-lg mt-1">
-                        <i className="fas fa-map-marker-alt text-teal-600 mr-2"></i>
-                        Kano, NG <i className="fas fa-chevron-down text-sm ml-2 text-gray-400 cursor-pointer"></i>
+        {/* Header - Only show on Home tab */}
+        {activeTab === 'home' && (
+          <div className="px-6 pt-10 pb-4 bg-white rounded-b-3xl shadow-sm z-10 relative">
+              <div className="flex justify-between items-center mb-6">
+                  <div>
+                      <p className="text-xs text-gray-500 font-medium">Current Location</p>
+                      <div className="flex items-center text-primary font-bold text-lg mt-1">
+                          <i className="fas fa-map-marker-alt text-teal-600 mr-2"></i>
+                          Kano, NG <i className="fas fa-chevron-down text-sm ml-2 text-gray-400 cursor-pointer"></i>
+                      </div>
+                  </div>
+                  <button className="bg-gray-100 p-3 rounded-full relative hover:bg-gray-200 transition">
+                      <i className="far fa-bell text-gray-600"></i>
+                  </button>
+              </div>
+              <div className="relative flex items-center">
+                  <i className="fas fa-search absolute left-4 text-gray-400 z-10"></i>
+                  <input type="text" placeholder="What service do you need?" className="w-full bg-gray-100 py-4 pl-12 pr-12 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-teal-600 transition-all relative" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                  <button className="absolute right-2 bg-primary text-white p-2.5 rounded-xl hover:bg-gray-800 transition z-10"><i className="fas fa-sliders-h"></i></button>
+              </div>
+          </div>
+        )}
+
+        {/* ---------------- HOME TAB CONTENT ---------------- */}
+        {activeTab === 'home' && (
+          <div className="flex-1 overflow-y-auto px-6 pt-6 pb-28">
+              <div className="mb-8">
+                  <div className="flex justify-between items-center mb-4">
+                      <h2 className="text-lg font-bold text-primary">Categories</h2>
+                      <span className="text-sm font-medium text-teal-600 cursor-pointer">See All</span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-4">
+                      {categories.map(cat => (
+                          <div key={cat.id} onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)} className="flex flex-col items-center cursor-pointer group">
+                              <div className={`h-14 w-14 rounded-2xl flex justify-center items-center text-xl mb-2 transition-all ${cat.bg} ${cat.color} ${selectedCategory === cat.id ? 'ring-2 ring-teal-600 shadow-md scale-105' : ''}`}>
+                                  <i className={`fas ${cat.icon}`}></i>
+                              </div>
+                              <span className={`text-[10px] font-medium text-center ${selectedCategory === cat.id ? 'text-teal-600 font-bold' : 'text-gray-600'}`}>{cat.name}</span>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+
+              <div>
+                  <div className="flex justify-between items-center mb-4">
+                      <h2 className="text-lg font-bold text-primary">
+                          {selectedCategory ? `${categories.find(c => c.id === selectedCategory)?.name} Pros` : 'Top Rated Near You'}
+                      </h2>
+                  </div>
+                  {loadingPros ? (
+                      <div className="text-center py-10"><i className="fas fa-spinner fa-spin text-teal-600 text-3xl mb-3"></i></div>
+                  ) : filteredPros.length === 0 ? (
+                      <div className="text-center py-10 bg-white rounded-3xl border border-gray-100">
+                          <i className="fas fa-search text-3xl text-gray-300 mb-3"></i><p className="text-gray-500 text-sm">No professionals found.</p>
+                      </div>
+                  ) : (
+                      filteredPros.map(pro => (
+                          <div key={pro._id || pro.id} onClick={() => setViewingProfile(pro)} className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 mb-4 hover:shadow-md transition cursor-pointer">
+                              <div className="flex items-center">
+                                  <img src={pro.avatar} alt={pro.name} className="w-16 h-16 rounded-2xl object-cover mr-4" />
+                                  <div className="flex-1">
+                                      <div className="flex justify-between items-start">
+                                          <h3 className="font-bold text-primary text-md">{pro.name} {pro.verified && <i className="fas fa-check-circle text-teal-600 text-xs ml-1"></i>}</h3>
+                                          <div className="flex items-center bg-orange-50 px-2 py-1 rounded-lg"><i className="fas fa-star text-orange-400 text-[10px] mr-1"></i><span className="text-xs font-bold text-orange-600">{pro.rating}</span></div>
+                                      </div>
+                                      <p className="text-xs text-gray-500 mt-1">{pro.title} • {pro.distance}</p>
+                                      <div className="mt-3 flex justify-between items-center">
+                                          <span className="text-sm font-bold text-primary">₦{pro.price.toLocaleString()}<span className="text-xs text-gray-400 font-normal">/hr</span></span>
+                                          <button onClick={(e) => { e.stopPropagation(); setBookingPro(pro); }} className="bg-primary text-white text-xs font-medium px-4 py-2 rounded-xl hover:bg-gray-800 transition">Book</button>
+                                      </div>
+                                  </div>
+                              </div>
+                          </div>
+                      ))
+                  )}
+              </div>
+          </div>
+        )}
+
+        {/* ---------------- BOOKINGS TAB CONTENT ---------------- */}
+        {activeTab === 'bookings' && (
+          <div className="flex-1 overflow-y-auto px-6 pt-10 pb-28 bg-gray-50">
+            <h2 className="text-2xl font-bold text-primary mb-6">My Bookings</h2>
+            
+            {loadingBookings ? (
+              <div className="text-center py-20"><i className="fas fa-spinner fa-spin text-teal-600 text-4xl mb-4"></i></div>
+            ) : myBookings.length === 0 ? (
+              <div className="text-center py-20 bg-white rounded-3xl border border-gray-100 shadow-sm">
+                  <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <i className="far fa-calendar-times text-3xl text-gray-400"></i>
+                  </div>
+                  <h3 className="font-bold text-primary mb-2">No Bookings Yet</h3>
+                  <p className="text-gray-500 text-sm mb-6 px-4">You haven't booked any professionals yet.</p>
+                  <button onClick={() => setActiveTab('home')} className="bg-teal-600 text-white font-medium px-6 py-3 rounded-xl hover:bg-teal-700 transition">Find a Professional</button>
+              </div>
+            ) : (
+              myBookings.map(booking => (
+                <div key={booking._id} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 mb-4 relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-teal-600"></div>
+                  <div className="flex justify-between items-start border-b border-gray-50 pb-3 mb-3 pl-2">
+                    <div>
+                      <p className="text-xs text-gray-400 font-medium mb-1">Service with</p>
+                      <h3 className="font-bold text-primary text-lg">{booking.professionalName}</h3>
                     </div>
-                </div>
-                <button className="bg-gray-100 p-3 rounded-full relative hover:bg-gray-200 transition">
-                    <i className="far fa-bell text-gray-600"></i>
-                </button>
-            </div>
-            <div className="relative flex items-center">
-                <i className="fas fa-search absolute left-4 text-gray-400 z-10"></i>
-                <input type="text" placeholder="What service do you need?" className="w-full bg-gray-100 py-4 pl-12 pr-12 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-teal-600 transition-all relative" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-                <button className="absolute right-2 bg-primary text-white p-2.5 rounded-xl hover:bg-gray-800 transition z-10"><i className="fas fa-sliders-h"></i></button>
-            </div>
-        </div>
-
-        {/* Main Content */}
-        <div className="flex-1 overflow-y-auto px-6 pt-6 pb-28">
-            <div className="mb-8">
-                <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-lg font-bold text-primary">Categories</h2>
-                    <span className="text-sm font-medium text-teal-600 cursor-pointer">See All</span>
-                </div>
-                <div className="grid grid-cols-4 gap-4">
-                    {categories.map(cat => (
-                        <div key={cat.id} onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)} className="flex flex-col items-center cursor-pointer group">
-                            <div className={`h-14 w-14 rounded-2xl flex justify-center items-center text-xl mb-2 transition-all ${cat.bg} ${cat.color} ${selectedCategory === cat.id ? 'ring-2 ring-teal-600 shadow-md scale-105' : ''}`}>
-                                <i className={`fas ${cat.icon}`}></i>
-                            </div>
-                            <span className={`text-[10px] font-medium text-center ${selectedCategory === cat.id ? 'text-teal-600 font-bold' : 'text-gray-600'}`}>{cat.name}</span>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            <div>
-                <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-lg font-bold text-primary">
-                        {selectedCategory ? `${categories.find(c => c.id === selectedCategory)?.name} Pros` : 'Top Rated Near You'}
-                    </h2>
-                </div>
-                {loading ? (
-                    <div className="text-center py-10"><i className="fas fa-spinner fa-spin text-teal-600 text-3xl mb-3"></i></div>
-                ) : filteredPros.length === 0 ? (
-                    <div className="text-center py-10 bg-white rounded-3xl border border-gray-100">
-                        <i className="fas fa-search text-3xl text-gray-300 mb-3"></i><p className="text-gray-500 text-sm">No professionals found.</p>
+                    <div className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider ${booking.status === 'pending' ? 'bg-orange-50 text-orange-500' : 'bg-teal-50 text-teal-600'}`}>
+                      {booking.status}
                     </div>
-                ) : (
-                    filteredPros.map(pro => (
-                        <div 
-                            key={pro._id || pro.id} 
-                            onClick={() => setViewingProfile(pro)} 
-                            className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 mb-4 hover:shadow-md transition cursor-pointer"
-                        >
-                            <div className="flex items-center">
-                                <img src={pro.avatar} alt={pro.name} className="w-16 h-16 rounded-2xl object-cover mr-4" />
-                                <div className="flex-1">
-                                    <div className="flex justify-between items-start">
-                                        <h3 className="font-bold text-primary text-md">{pro.name} {pro.verified && <i className="fas fa-check-circle text-teal-600 text-xs ml-1"></i>}</h3>
-                                        <div className="flex items-center bg-orange-50 px-2 py-1 rounded-lg"><i className="fas fa-star text-orange-400 text-[10px] mr-1"></i><span className="text-xs font-bold text-orange-600">{pro.rating}</span></div>
-                                    </div>
-                                    <p className="text-xs text-gray-500 mt-1">{pro.title} • {pro.distance}</p>
-                                    <div className="mt-3 flex justify-between items-center">
-                                        <span className="text-sm font-bold text-primary">₦{pro.price.toLocaleString()}<span className="text-xs text-gray-400 font-normal">/hr</span></span>
-                                        <button 
-                                            onClick={(e) => { e.stopPropagation(); setBookingPro(pro); }} 
-                                            className="bg-primary text-white text-xs font-medium px-4 py-2 rounded-xl hover:bg-gray-800 transition"
-                                        >
-                                            Book
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    ))
-                )}
-            </div>
-        </div>
+                  </div>
+                  <div className="pl-2">
+                    <div className="flex items-center text-sm text-gray-600 mb-2">
+                      <i className="far fa-calendar-alt w-6 text-teal-600 text-center"></i>
+                      <span className="font-medium">{new Date(booking.date).toLocaleDateString()} at {booking.time}</span>
+                    </div>
+                    <div className="flex items-start text-sm text-gray-600 mb-4">
+                      <i className="fas fa-map-marker-alt w-6 text-teal-600 text-center mt-1"></i>
+                      <span className="flex-1">{booking.address}</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-3 border-t border-gray-50">
+                      <span className="text-gray-500 text-xs font-medium">Total Cost</span>
+                      <span className="text-primary font-bold">₦{booking.totalPrice.toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
 
-        {/* ---------------- PROFESSIONAL PROFILE OVERLAY ---------------- */}
+        {/* ---------------- PROFILE OVERLAY MODAL ---------------- */}
         {viewingProfile && !bookingPro && (
             <div className="absolute inset-0 bg-white z-40 flex flex-col animate-[slideLeft_0.3s_ease-out]">
-                {/* Profile Header */}
                 <div className="flex justify-between items-center p-6 bg-white border-b border-gray-100 sticky top-0 z-10">
-                    <button onClick={() => setViewingProfile(null)} className="h-10 w-10 rounded-full flex justify-center items-center bg-gray-50 text-gray-600 hover:bg-gray-200 transition">
-                        <i className="fas fa-chevron-left"></i>
-                    </button>
+                    <button onClick={() => setViewingProfile(null)} className="h-10 w-10 rounded-full flex justify-center items-center bg-gray-50 text-gray-600 hover:bg-gray-200 transition"><i className="fas fa-chevron-left"></i></button>
                     <div className="flex space-x-3">
                         <button className="h-10 w-10 rounded-full flex justify-center items-center bg-gray-50 text-gray-600 hover:bg-gray-200"><i className="far fa-heart"></i></button>
                         <button className="h-10 w-10 rounded-full flex justify-center items-center bg-gray-50 text-gray-600 hover:bg-gray-200"><i className="fas fa-share-alt"></i></button>
                     </div>
                 </div>
-
-                {/* Profile Scrollable Content */}
                 <div className="flex-1 overflow-y-auto pb-28">
-                    {/* Hero Image */}
                     <div className="w-full h-48 bg-gray-100 flex items-center justify-center relative overflow-hidden">
-                        <img src={viewingProfile.avatar} className="w-full h-full object-cover blur-md opacity-40 absolute" alt="background blur" />
-                        <img src={viewingProfile.avatar} className="w-28 h-28 rounded-full border-4 border-white shadow-lg relative z-10 object-cover" alt="profile avatar" />
+                        <img src={viewingProfile.avatar} className="w-full h-full object-cover blur-md opacity-40 absolute" alt="blur" />
+                        <img src={viewingProfile.avatar} className="w-28 h-28 rounded-full border-4 border-white shadow-lg relative z-10 object-cover" alt="avatar" />
                     </div>
-
                     <div className="p-6">
                         <div className="flex justify-between items-start mb-2">
                             <div>
@@ -201,47 +247,29 @@ const App = () => {
                                 <span className="text-xs text-gray-400">per hour</span>
                             </div>
                         </div>
-
-                        {/* Badges */}
                         <div className="flex space-x-4 mb-6 border-b border-gray-100 pb-6 mt-4">
-                            <div className="flex items-center text-sm font-medium text-gray-600">
-                                <i className="fas fa-star text-orange-400 mr-2"></i> {viewingProfile.rating} ({viewingProfile.reviews} reviews)
-                            </div>
-                            <div className="flex items-center text-sm font-medium text-gray-600">
-                                <i className="fas fa-map-marker-alt text-gray-400 mr-2"></i> {viewingProfile.distance} away
-                            </div>
+                            <div className="flex items-center text-sm font-medium text-gray-600"><i className="fas fa-star text-orange-400 mr-2"></i> {viewingProfile.rating} ({viewingProfile.reviews} reviews)</div>
+                            <div className="flex items-center text-sm font-medium text-gray-600"><i className="fas fa-map-marker-alt text-gray-400 mr-2"></i> {viewingProfile.distance} away</div>
                         </div>
-
-                        {/* About Section */}
                         <h2 className="text-lg font-bold text-primary mb-3">About</h2>
-                        <p className="text-gray-500 text-sm leading-relaxed mb-6">
-                            Highly skilled and reliable professional with years of experience providing top-notch service. Committed to customer satisfaction, safety, and delivering high-quality results on every single job.
-                        </p>
-
-                        {/* Reviews Preview */}
+                        <p className="text-gray-500 text-sm leading-relaxed mb-6">Highly skilled and reliable professional with years of experience providing top-notch service. Committed to customer satisfaction, safety, and delivering high-quality results on every single job.</p>
                         <h2 className="text-lg font-bold text-primary mb-3">Recent Reviews</h2>
                         <div className="bg-gray-50 p-4 rounded-2xl mb-4 border border-gray-100">
                             <div className="flex justify-between items-center mb-2">
-                                <div className="flex text-orange-400 text-xs">
-                                    <i className="fas fa-star"></i><i className="fas fa-star"></i><i className="fas fa-star"></i><i className="fas fa-star"></i><i className="fas fa-star"></i>
-                                </div>
+                                <div className="flex text-orange-400 text-xs"><i className="fas fa-star"></i><i className="fas fa-star"></i><i className="fas fa-star"></i><i className="fas fa-star"></i><i className="fas fa-star"></i></div>
                                 <span className="text-xs text-gray-400">2 days ago</span>
                             </div>
                             <p className="text-sm text-gray-600 font-medium">"Excellent service! Arrived on time and did a fantastic job. Highly recommended."</p>
                         </div>
                     </div>
                 </div>
-
-                {/* Bottom Book Bar */}
                 <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-6 py-4 pb-8 z-20 md:rounded-b-[2.5rem]">
-                    <button onClick={() => setBookingPro(viewingProfile)} className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl hover:bg-teal-700 transition shadow-lg shadow-teal-600/30">
-                        Book Service Now
-                    </button>
+                    <button onClick={() => setBookingPro(viewingProfile)} className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl hover:bg-teal-700 transition shadow-lg shadow-teal-600/30">Book Service Now</button>
                 </div>
             </div>
         )}
 
-        {/* ---------------- BOOKING OVERLAY MODAL ---------------- */}
+        {/* ---------------- BOOKING CHECKOUT MODAL ---------------- */}
         {bookingPro && (
             <div className="absolute inset-0 bg-white z-50 flex flex-col animate-[slideUp_0.3s_ease-out]">
                 <div className="flex justify-between items-center p-6 border-b border-gray-100 sticky top-0 bg-white">
@@ -251,9 +279,7 @@ const App = () => {
                 
                 {isBookingSuccess ? (
                     <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-                        <div className="w-24 h-24 bg-teal-50 rounded-full flex items-center justify-center mb-6">
-                            <i className="fas fa-check text-4xl text-teal-600"></i>
-                        </div>
+                        <div className="w-24 h-24 bg-teal-50 rounded-full flex items-center justify-center mb-6"><i className="fas fa-check text-4xl text-teal-600"></i></div>
                         <h2 className="text-2xl font-bold text-primary mb-2">Booking Confirmed!</h2>
                         <p className="text-gray-500 mb-8">Your request has been sent to {bookingPro.name}. They will arrive at the scheduled time.</p>
                         <button onClick={closeBooking} className="w-full bg-primary text-white font-bold py-4 rounded-2xl hover:bg-gray-800 transition">Done</button>
@@ -262,10 +288,7 @@ const App = () => {
                     <form onSubmit={handleBookingSubmit} className="flex-1 overflow-y-auto p-6 flex flex-col pb-28">
                         <div className="bg-gray-50 p-4 rounded-2xl flex items-center mb-6 border border-gray-100">
                             <img src={bookingPro.avatar} className="w-12 h-12 rounded-xl object-cover mr-4" alt="avatar"/>
-                            <div>
-                                <p className="font-bold text-primary">{bookingPro.name}</p>
-                                <p className="text-xs text-teal-600 font-medium">{bookingPro.title}</p>
-                            </div>
+                            <div><p className="font-bold text-primary">{bookingPro.name}</p><p className="text-xs text-teal-600 font-medium">{bookingPro.title}</p></div>
                         </div>
 
                         <label className="text-sm font-bold text-primary mb-2">Select Date</label>
@@ -274,9 +297,7 @@ const App = () => {
                         <label className="text-sm font-bold text-primary mb-2">Select Time</label>
                         <div className="grid grid-cols-3 gap-3 mb-6">
                             {['10:00 AM', '1:00 PM', '4:00 PM'].map(time => (
-                                <div key={time} onClick={() => setBookingData({...bookingData, time})} className={`text-center py-3 rounded-xl text-sm font-medium cursor-pointer transition ${bookingData.time === time ? 'bg-primary text-white' : 'bg-gray-50 border border-gray-200 text-gray-600 hover:border-teal-600'}`}>
-                                    {time}
-                                </div>
+                                <div key={time} onClick={() => setBookingData({...bookingData, time})} className={`text-center py-3 rounded-xl text-sm font-medium cursor-pointer transition ${bookingData.time === time ? 'bg-primary text-white' : 'bg-gray-50 border border-gray-200 text-gray-600 hover:border-teal-600'}`}>{time}</div>
                             ))}
                         </div>
 
@@ -297,7 +318,7 @@ const App = () => {
             </div>
         )}
 
-        {/* Bottom Nav */}
+        {/* ---------------- BOTTOM NAVIGATION ---------------- */}
         <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-6 py-4 flex justify-between items-center pb-8 md:rounded-b-[2.5rem] z-20">
             <div onClick={() => setActiveTab('home')} className={`flex flex-col items-center cursor-pointer transition ${activeTab === 'home' ? 'text-teal-600' : 'text-gray-400 hover:text-primary'}`}>
                 <i className="fas fa-home text-xl mb-1"></i><span className="text-[10px] font-bold mt-1">Home</span>
@@ -309,7 +330,7 @@ const App = () => {
                 <i className="far fa-comment-dots text-xl mb-1"></i><span className="text-[10px] font-medium mt-1">Chat</span>
             </div>
             <div onClick={() => setActiveTab('profile')} className={`flex flex-col items-center cursor-pointer transition ${activeTab === 'profile' ? 'text-teal-600' : 'text-gray-400 hover:text-primary'}`}>
-                <i className="far fa-user text-xl mb-1"></i><span className="text-[10px] font-medium mt-1">Profile</span>
+                <i className="far fa-user text-xl mb-1"></i><span className="text-[10px] font-medium mt-1">Account</span>
             </div>
         </div>
 
