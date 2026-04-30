@@ -1,13 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { AuthProvider, useAuth } from './context/AuthContext'; // <-- ADD THIS LINE
+import { AuthProvider, useAuth } from './context/AuthContext';
 
 // Auto-clean the URL to guarantee there are no trailing slashes causing HTML errors
 let rawUrl = import.meta.env.VITE_BACKEND_URL || 'https://service-app-backend-121o.onrender.com';
 const backendUrl = rawUrl.replace(/\/$/, "");
-// Don't include the .js extension in the import string
-import { AuthProvider } from './context/AuthContext';
-
-const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://service-app-backend-121o.onrender.com';
 
 // ==========================================
 // AUTHENTICATION SCREEN
@@ -348,73 +344,4 @@ const MainApp = () => {
                         <label className="text-sm font-bold text-primary mb-2">Select Time</label>
                         <div className="grid grid-cols-3 gap-3 mb-6">
                             {['10:00 AM', '1:00 PM', '4:00 PM'].map(time => (
-                                <div key={time} onClick={() => setBookingData({...bookingData, time})} className={`text-center py-3 rounded-xl text-sm font-medium cursor-pointer ${bookingData.time === time ? 'bg-primary text-white' : 'bg-gray-50 text-gray-600'}`}>{time}</div>
-                            ))}
-                        </div>
-
-                        <label className="text-sm font-bold text-primary mb-2">Address</label>
-                        <textarea required className="w-full bg-gray-50 border border-gray-200 p-4 rounded-xl mb-6 h-28 outline-none focus:ring-2 focus:ring-teal-600 resize-none" value={bookingData.address} onChange={e => setBookingData({...bookingData, address: e.target.value})}></textarea>
-
-                        <button type="submit" disabled={isSubmitting} className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl mt-auto">
-                            {isSubmitting ? 'Confirming...' : 'Confirm Booking'}
-                        </button>
-                    </form>
-                )}
-            </div>
-        )}
-
-        {viewingProfile && !bookingPro && (
-             <div className="absolute inset-0 bg-white z-40 flex flex-col animate-[slideLeft_0.3s_ease-out]">
-                 <div className="flex justify-between items-center p-6 bg-white border-b border-gray-100">
-                     <button onClick={() => setViewingProfile(null)} className="h-10 w-10 rounded-full bg-gray-50 text-gray-600"><i className="fas fa-chevron-left"></i></button>
-                 </div>
-                 <div className="flex-1 overflow-y-auto pb-28">
-                     <img src={viewingProfile.avatar} className="w-28 h-28 rounded-full border-4 border-white shadow-lg mx-auto mt-6 object-cover" />
-                     <div className="p-6 text-center">
-                         <h1 className="text-2xl font-bold text-primary">{viewingProfile.name}</h1>
-                         <p className="text-teal-600 font-medium mb-4">{viewingProfile.title}</p>
-                         <p className="text-gray-500 text-sm leading-relaxed mb-6">Highly skilled and reliable professional with years of experience.</p>
-                         <button onClick={() => setBookingPro(viewingProfile)} className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl shadow-lg">Book Service Now</button>
-                     </div>
-                 </div>
-             </div>
-        )}
-
-        {/* BOTTOM NAV */}
-        <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-6 py-4 flex justify-between items-center pb-8 z-20">
-            {['home', 'bookings', 'chat', 'profile'].map((tab, idx) => {
-              const icons = ['fa-home', 'fa-calendar-alt', 'fa-comment-dots', 'fa-user'];
-              const isSolid = (tab === 'home');
-              return (
-                <div key={tab} onClick={() => setActiveTab(tab)} className={`flex flex-col items-center cursor-pointer ${activeTab === tab ? 'text-teal-600' : 'text-gray-400'}`}>
-                    <i className={`${isSolid ? 'fas' : 'far'} ${icons[idx]} text-xl mb-1`}></i>
-                    <span className="text-[10px] font-bold mt-1 capitalize">{tab}</span>
-                </div>
-              );
-            })}
-        </div>
-
-        <style>{`
-          @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-          @keyframes slideLeft { from { transform: translateX(100%); } to { transform: translateX(0); } }
-        `}</style>
-    </div>
-  );
-};
-
-// ==========================================
-// GLOBAL APP WRAPPER
-// ==========================================
-const AppController = () => {
-  const { user, loading } = useAuth();
-  if (loading) return <div className="h-screen bg-gray-200 flex items-center justify-center"><i className="fas fa-circle-notch fa-spin text-teal-600 text-4xl"></i></div>;
-  return user ? <MainApp /> : <AuthScreen />;
-};
-
-const App = () => (
-  <AuthProvider>
-    <AppController />
-  </AuthProvider>
-);
-
-export default App;
+                                <div key={time} 
