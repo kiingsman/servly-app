@@ -5,27 +5,45 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-// Import your custom middleware and models
+// Import middleware and models
 const auth = require('./middleware/auth');
 const User = require('./models/User');
+const Booking = require('./models/Booking');
+const Professional = require('./models/Professional');
 
 const app = express();
 
 // --- 1. Middleware ---
-app.use(cors()); // Allows your Vercel frontend to connect
-app.use(express.json()); // Allows Express to read JSON body data
+app.use(cors()); 
+app.use(express.json());
 
-// --- 2. Database Connection ---
+// --- 2. Database Connection & Auto-Seeding ---
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/servly', {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
-.then(() => console.log('✅ MongoDB Connected Successfully!'))
+.then(async () => {
+    console.log('✅ MongoDB Connected Successfully!');
+    
+    // Auto-seed professionals if the database is empty
+    const count = await Professional.countDocuments();
+    if (count === 0) {
+        const initialPros = [
+            { name: "David O.", title: "Master Electrician", category: "electric", rating: 4.9, distance: "2.5 km away", price: 15000, verified: true, avatar: "https://i.pravatar.cc/150?img=11" },
+            { name: "Sarah M.", title: "Pro Plumber", category: "plumbing", rating: 4.8, distance: "1.2 km away", price: 12000, verified: true, avatar: "https://i.pravatar.cc/150?img=5" },
+            { name: "John K.", title: "AC Specialist", category: "ac", rating: 4.7, distance: "3.0 km away", price: 18000, verified: true, avatar: "https://i.pravatar.cc/150?img=8" },
+            { name: "Grace T.", title: "Deep Cleaning Expert", category: "cleaning", rating: 5.0, distance: "0.8 km away", price: 10000, verified: true, avatar: "https://i.pravatar.cc/150?img=9" }
+        ];
+        await Professional.insertMany(initialPros);
+        console.log('✅ Injected initial professionals into the database!');
+    }
+})
 .catch(err => console.log('❌ MongoDB Connection Error:', err));
+
 
 // --- 3. Simple Test Route ---
 app.get('/', (req, res) => {
-    res.send('Servly API is awake and running securely!');
+    res.send('Servly API is awake and running securely with MongoDB!');
 });
 
 
@@ -33,75 +51,47 @@ app.get('/', (req, res) => {
 // 4. AUTHENTICATION ROUTES
 // ==========================================
 
-// SIGN UP ROUTE
 app.post('/api/signup', async (req, res) => {
     try {
         const { name, email, password } = req.body;
-        
-        // Check if user already exists
         const existingUser = await User.findOne({ email });
-        if (existingUser) {
-            return res.status(400).json({ message: 'User already exists with this email' });
-        }
+        if (existingUser) return res.status(400).json({ message: 'User already exists with this email' });
 
-        // Hash password
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Create new user
-        const newUser = new User({
-            name,
-            email,
-            password: hashedPassword
-        });
-
+        const newUser = new User({ name, email, password: hashedPassword });
         const savedUser = await newUser.save();
 
-        // Create JWT Token
         const token = jwt.sign(
             { userId: savedUser._id, name: savedUser.name },
             process.env.JWT_SECRET || 'fallback_secret',
             { expiresIn: '7d' }
         );
 
-        res.status(201).json({
-            token,
-            user: { id: savedUser._id, name: savedUser.name, email: savedUser.email }
-        });
+        res.status(201).json({ token, user: { id: savedUser._id, name: savedUser.name, email: savedUser.email } });
     } catch (error) {
         console.error("Signup Error:", error);
         res.status(500).json({ message: 'Server error during signup' });
     }
 });
 
-// LOG IN ROUTE
 app.post('/api/login', async (req, res) => {
     try {
         const { email, password } = req.body;
-
-        // Find user by email
         const user = await User.findOne({ email });
-        if (!user) {
-            return res.status(400).json({ message: 'Invalid credentials' });
-        }
+        if (!user) return res.status(400).json({ message: 'Invalid credentials' });
 
-        // Compare password
         const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(400).json({ message: 'Invalid credentials' });
-        }
+        if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
 
-        // Create JWT Token
         const token = jwt.sign(
             { userId: user._id, name: user.name },
             process.env.JWT_SECRET || 'fallback_secret',
             { expiresIn: '7d' }
         );
 
-        res.json({
-            token,
-            user: { id: user._id, name: user.name, email: user.email }
-        });
+        res.json({ token, user: { id: user._id, name: user.name, email: user.email } });
     } catch (error) {
         console.error("Login Error:", error);
         res.status(500).json({ message: 'Server error during login' });
@@ -110,42 +100,39 @@ app.post('/api/login', async (req, res) => {
 
 
 // ==========================================
-// 5. PROFESSIONALS ROUTE
+// 5. PROFESSIONALS ROUTE (From MongoDB)
 // ==========================================
-app.get('/api/professionals', (req, res) => {
-    // Hardcoded list of professionals for the MVP
-    const pros = [
-        { id: 1, name: "David O.", title: "Master Electrician", category: "electric", rating: 4.9, distance: "2.5 km away", price: 15000, verified: true, avatar: "https://i.pravatar.cc/150?img=11" },
-        { id: 2, name: "Sarah M.", title: "Pro Plumber", category: "plumbing", rating: 4.8, distance: "1.2 km away", price: 12000, verified: true, avatar: "https://i.pravatar.cc/150?img=5" },
-        { id: 3, name: "John K.", title: "AC Specialist", category: "ac", rating: 4.7, distance: "3.0 km away", price: 18000, verified: true, avatar: "https://i.pravatar.cc/150?img=8" },
-        { id: 4, name: "Grace T.", title: "Deep Cleaning Expert", category: "cleaning", rating: 5.0, distance: "0.8 km away", price: 10000, verified: true, avatar: "https://i.pravatar.cc/150?img=9" }
-    ];
-    res.json(pros);
+app.get('/api/professionals', async (req, res) => {
+    try {
+        const pros = await Professional.find();
+        res.json(pros);
+    } catch (error) {
+        console.error("Error fetching professionals:", error);
+        res.status(500).json({ message: 'Server error fetching professionals' });
+    }
 });
 
 
 // ==========================================
-// 6. BOOKINGS ROUTES (Protected)
+// 6. BOOKINGS ROUTES (Protected & Saved to MongoDB)
 // ==========================================
 
-// Create a quick, temporary in-memory array to store bookings 
-// (since you don't have a Booking.js Mongoose model yet)
-const tempBookingsDB = [];
-
 // POST a new booking
-app.post('/api/bookings', auth, (req, res) => {
+app.post('/api/bookings', auth, async (req, res) => {
     try {
-        const newBooking = {
-            _id: Math.random().toString(36).substr(2, 9), // generate random ID
-            userId: req.user.id, // Comes from auth.js middleware!
+        const newBooking = new Booking({
+            userId: req.user.id,
             clientName: req.user.name, 
-            ...req.body, // professionalId, date, time, address, totalPrice
-            status: 'pending',
-            createdAt: new Date()
-        };
+            professionalId: req.body.professionalId,
+            professionalName: req.body.professionalName,
+            date: req.body.date,
+            time: req.body.time,
+            address: req.body.address,
+            totalPrice: req.body.totalPrice
+        });
         
-        tempBookingsDB.push(newBooking);
-        res.status(201).json(newBooking);
+        const savedBooking = await newBooking.save();
+        res.status(201).json(savedBooking);
     } catch (error) {
         console.error("Booking Error:", error);
         res.status(500).json({ message: 'Server error saving booking' });
@@ -153,10 +140,9 @@ app.post('/api/bookings', auth, (req, res) => {
 });
 
 // GET user's bookings
-app.get('/api/bookings', auth, (req, res) => {
+app.get('/api/bookings', auth, async (req, res) => {
     try {
-        // Only return bookings that belong to the logged-in user
-        const userBookings = tempBookingsDB.filter(b => b.userId === req.user.id);
+        const userBookings = await Booking.find({ userId: req.user.id }).sort({ createdAt: -1 });
         res.json(userBookings);
     } catch (error) {
         console.error("Fetch Bookings Error:", error);
