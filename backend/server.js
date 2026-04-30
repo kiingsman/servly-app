@@ -5,7 +5,10 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-// Import middleware and models
+// --- NEW: Socket.io Imports ---
+const http = require('http');
+const { Server } = require('socket.io');
+
 const auth = require('./middleware/auth');
 const User = require('./models/User');
 const Booking = require('./models/Booking');
@@ -13,11 +16,20 @@ const Professional = require('./models/Professional');
 
 const app = express();
 
+// --- NEW: Wrap Express with HTTP Server for Socket.io ---
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: "*", // Allow all origins for Vercel
+        methods: ["GET", "POST"]
+    }
+});
+
 // --- 1. Middleware ---
 app.use(cors()); 
 app.use(express.json());
 
-// --- 2. Database Connection & Auto-Seeding ---
+// --- 2. Database Connection ---
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/servly', {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -38,10 +50,34 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/servly', {
 })
 .catch(err => console.log('❌ MongoDB Connection Error:', err));
 
-app.get('/', (req, res) => res.send('Servly API is awake, connected to MongoDB, and ready!'));
+app.get('/', (req, res) => res.send('Servly API is awake with Socket.io!'));
 
 // ==========================================
-// 4. AUTHENTICATION ROUTES
+// SOCKET.IO REAL-TIME CHAT LOGIC
+// ==========================================
+io.on('connection', (socket) => {
+    console.log(`🔌 User connected: ${socket.id}`);
+
+    // Listen for a user joining a specific chat room (e.g., booking ID)
+    socket.on('join_room', (room) => {
+        socket.join(room);
+        console.log(`User joined room: ${room}`);
+    });
+
+    // Listen for messages from the frontend
+    socket.on('send_message', (data) => {
+        // Broadcast the message to everyone else in that specific room
+        socket.to(data.room).emit('receive_message', data);
+    });
+
+    socket.on('disconnect', () => {
+        console.log(`🔴 User disconnected: ${socket.id}`);
+    });
+});
+
+
+// ==========================================
+// AUTHENTICATION ROUTES
 // ==========================================
 app.post('/api/signup', async (req, res) => {
     try {
@@ -74,17 +110,17 @@ app.post('/api/login', async (req, res) => {
 });
 
 // ==========================================
-// 5. PROFESSIONALS ROUTE
+// PROFESSIONALS ROUTE
 // ==========================================
 app.get('/api/professionals', async (req, res) => {
     try {
-        const pros = await Professional.find().sort({ createdAt: -1 }); // Newest first
+        const pros = await Professional.find().sort({ createdAt: -1 }); 
         res.json(pros);
     } catch (error) { res.status(500).json({ message: 'Server error fetching professionals' }); }
 });
 
 // ==========================================
-// 6. USER BOOKINGS ROUTES
+// USER BOOKINGS ROUTES
 // ==========================================
 app.post('/api/bookings', auth, async (req, res) => {
     try {
@@ -118,7 +154,7 @@ app.patch('/api/bookings/:id/cancel', auth, async (req, res) => {
 });
 
 // ==========================================
-// 7. ADMIN ROUTES
+// ADMIN ROUTES
 // ==========================================
 app.get('/api/admin/bookings', auth, async (req, res) => {
     try {
@@ -139,27 +175,19 @@ app.patch('/api/admin/bookings/:id/status', auth, async (req, res) => {
     } catch (error) { res.status(500).json({ message: 'Server error updating booking status' }); }
 });
 
-// NEW: Add a professional to the platform
 app.post('/api/admin/professionals', auth, async (req, res) => {
     try {
         const { name, title, category, price, avatar } = req.body;
-        
-        // Ensure an avatar is provided, or give a default one
         const finalAvatar = avatar || `https://i.pravatar.cc/150?u=${Math.random()}`;
-
         const newPro = new Professional({
             name, title, category, price, avatar: finalAvatar,
-            rating: 5.0, distance: "1.0 km away", verified: true // defaults for new pros
+            rating: 5.0, distance: "1.0 km away", verified: true
         });
-
         const savedPro = await newPro.save();
         res.status(201).json(savedPro);
-    } catch (error) {
-        console.error("Error creating professional:", error);
-        res.status(500).json({ message: 'Server error creating professional' });
-    }
+    } catch (error) { res.status(500).json({ message: 'Server error creating professional' }); }
 });
 
-// --- 8. Start Server ---
+// --- 8. Start Server (IMPORTANT: using server.listen instead of app.listen) ---
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Server with WebSockets running on port ${PORT}`));

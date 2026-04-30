@@ -1,8 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import io from 'socket.io-client'; // --- NEW: Socket.io Client ---
 
 let rawUrl = import.meta.env.VITE_BACKEND_URL || 'https://servly-app-icy0.onrender.com';
 const backendUrl = rawUrl.replace(/\/$/, "");
+
+// Initialize socket outside the component so it doesn't reconnect constantly
+const socket = io(backendUrl);
 
 // ==========================================
 // AUTHENTICATION SCREEN
@@ -65,8 +69,7 @@ const MainApp = () => {
   const [myBookings, setMyBookings] = useState([]);
   const [loadingBookings, setLoadingBookings] = useState(false);
 
-  // Admin State
-  const [adminTab, setAdminTab] = useState('bookings'); // 'bookings' or 'addPro'
+  const [adminTab, setAdminTab] = useState('bookings');
   const [adminBookings, setAdminBookings] = useState([]);
   const [loadingAdmin, setLoadingAdmin] = useState(false);
   const [newProData, setNewProData] = useState({ name: '', title: '', category: 'cleaning', price: '', avatar: '' });
@@ -78,6 +81,12 @@ const MainApp = () => {
   const [isBookingSuccess, setIsBookingSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // --- NEW: CHAT STATE ---
+  const [currentMessage, setCurrentMessage] = useState('');
+  const [messageList, setMessageList] = useState([]);
+  const [activeChatRoom, setActiveChatRoom] = useState('general_lobby'); // Default room
+  const chatEndRef = useRef(null); // Used to auto-scroll chat to bottom
+
   const fetchProfessionals = () => {
     fetch(`${backendUrl}/api/professionals`)
       .then(res => res.json())
@@ -86,6 +95,21 @@ const MainApp = () => {
   };
 
   useEffect(() => { fetchProfessionals(); }, []);
+
+  // --- NEW: CHAT EFFECT ---
+  useEffect(() => {
+      // Listen for incoming messages from the server
+      socket.on('receive_message', (data) => {
+          setMessageList((list) => [...list, data]);
+      });
+      // Clean up listener
+      return () => socket.off('receive_message');
+  }, []);
+
+  // Auto-scroll to bottom of chat when new message arrives
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messageList, activeTab]);
 
   useEffect(() => {
     if (activeTab === 'bookings') {
@@ -102,7 +126,11 @@ const MainApp = () => {
         .then(data => { setAdminBookings(data); setLoadingAdmin(false); })
         .catch(() => setLoadingAdmin(false));
     }
-  }, [activeTab, adminTab, logout]);
+    if (activeTab === 'chat') {
+        // Join the default chat room when opening the chat tab
+        socket.emit('join_room', activeChatRoom);
+    }
+  }, [activeTab, adminTab, logout, activeChatRoom]);
 
   const handleBookingSubmit = (e) => {
     e.preventDefault(); setIsSubmitting(true);
@@ -125,26 +153,25 @@ const MainApp = () => {
   };
 
   const handleAddProfessional = async (e) => {
-      e.preventDefault();
-      setIsAddingPro(true);
+      e.preventDefault(); setIsAddingPro(true);
       try {
-          const res = await fetch(`${backendUrl}/api/admin/professionals`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` },
-              body: JSON.stringify({ ...newProData, price: Number(newProData.price) })
-          });
-          if (res.ok) {
-              alert("Professional Added Successfully!");
-              setNewProData({ name: '', title: '', category: 'cleaning', price: '', avatar: '' });
-              fetchProfessionals(); // Refresh the home list
-              setActiveTab('home'); // Send user to home to see the new pro
-          } else {
-              alert("Failed to add professional.");
-          }
-      } catch (err) {
-          console.error(err);
-      } finally {
-          setIsAddingPro(false);
+          const res = await fetch(`${backendUrl}/api/admin/professionals`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, body: JSON.stringify({ ...newProData, price: Number(newProData.price) }) });
+          if (res.ok) { alert("Professional Added!"); setNewProData({ name: '', title: '', category: 'cleaning', price: '', avatar: '' }); fetchProfessionals(); setActiveTab('home'); }
+      } catch (err) { console.error(err); } finally { setIsAddingPro(false); }
+  };
+
+  // --- NEW: SEND MESSAGE FUNCTION ---
+  const sendMessage = async () => {
+      if (currentMessage !== "") {
+          const messageData = {
+              room: activeChatRoom,
+              author: user.name,
+              message: currentMessage,
+              time: new Date(Date.now()).getHours() + ":" + new Date(Date.now()).getMinutes()
+          };
+          await socket.emit('send_message', messageData);
+          setMessageList((list) => [...list, messageData]); // Add to own screen instantly
+          setCurrentMessage(""); // Clear input
       }
   };
 
@@ -217,7 +244,7 @@ const MainApp = () => {
           </>
         )}
 
-        {/* --- USER BOOKINGS TAB --- */}
+        {/* --- BOOKINGS TAB --- */}
         {activeTab === 'bookings' && (
           <div className="flex-1 overflow-y-auto px-6 pt-10 pb-28 bg-gray-50">
             <h2 className="text-2xl font-bold text-primary mb-6">My Bookings</h2>
@@ -240,6 +267,61 @@ const MainApp = () => {
           </div>
         )}
 
+        {/* --- NEW: CHAT TAB --- */}
+        {activeTab === 'chat' && (
+          <div className="flex-1 flex flex-col bg-gray-50 pb-20 relative">
+             <div className="px-6 pt-10 pb-4 bg-white border-b border-gray-100 shadow-sm z-10 sticky top-0">
+                <h2 className="text-2xl font-bold text-primary">Support Chat</h2>
+                <p className="text-xs text-teal-600 font-bold mt-1"><i className="fas fa-circle text-[8px] mr-1"></i> Live in Platform Lobby</p>
+             </div>
+             
+             {/* Chat Messages Container */}
+             <div className="flex-1 overflow-y-auto px-4 py-6 flex flex-col gap-4">
+                 {messageList.length === 0 ? (
+                     <div className="text-center text-gray-400 mt-10">
+                        <i className="far fa-comments text-4xl mb-3 opacity-50"></i>
+                        <p>No messages here yet.</p>
+                        <p className="text-xs mt-1">Say hello to platform support or professionals!</p>
+                     </div>
+                 ) : (
+                     messageList.map((msg, index) => {
+                         const isMe = msg.author === user.name;
+                         return (
+                             <div key={index} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                                <div className={`px-4 py-3 rounded-2xl max-w-[80%] ${isMe ? 'bg-teal-600 text-white rounded-br-none shadow-md' : 'bg-white border border-gray-100 text-gray-800 rounded-bl-none shadow-sm'}`}>
+                                    <p className="text-sm">{msg.message}</p>
+                                </div>
+                                <div className="flex gap-2 mt-1 text-[10px] text-gray-400 font-medium px-1">
+                                    <span>{msg.time}</span>
+                                    <span>•</span>
+                                    <span>{msg.author}</span>
+                                </div>
+                             </div>
+                         );
+                     })
+                 )}
+                 <div ref={chatEndRef} />
+             </div>
+
+             {/* Message Input Box */}
+             <div className="absolute bottom-[72px] left-0 w-full bg-white border-t border-gray-100 p-4">
+                 <div className="flex items-center gap-3">
+                     <input 
+                        type="text" 
+                        value={currentMessage} 
+                        onChange={(e) => setCurrentMessage(e.target.value)} 
+                        onKeyPress={(e) => { e.key === "Enter" && sendMessage(); }}
+                        placeholder="Type a message..." 
+                        className="flex-1 bg-gray-100 p-3 rounded-xl text-sm outline-none focus:ring-2 focus:ring-teal-600"
+                     />
+                     <button onClick={sendMessage} className="bg-teal-600 text-white w-12 h-12 rounded-xl flex items-center justify-center hover:bg-teal-700 transition shadow-md">
+                         <i className="fas fa-paper-plane"></i>
+                     </button>
+                 </div>
+             </div>
+          </div>
+        )}
+
         {/* --- ADMIN DASHBOARD TAB --- */}
         {activeTab === 'admin' && (
           <div className="flex-1 overflow-y-auto bg-gray-900 flex flex-col h-full">
@@ -248,14 +330,12 @@ const MainApp = () => {
                 <button onClick={() => setActiveTab('profile')} className="text-gray-400 hover:text-white bg-gray-800 px-3 py-1 rounded-lg text-xs font-bold">Close</button>
             </div>
             
-            {/* Admin Nav Toggle */}
             <div className="flex px-6 mt-4 mb-6">
                 <button onClick={() => setAdminTab('bookings')} className={`flex-1 py-3 text-sm font-bold rounded-l-xl border border-gray-700 ${adminTab === 'bookings' ? 'bg-teal-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>All Bookings</button>
                 <button onClick={() => setAdminTab('addPro')} className={`flex-1 py-3 text-sm font-bold rounded-r-xl border border-gray-700 border-l-0 ${adminTab === 'addPro' ? 'bg-teal-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}><i className="fas fa-user-plus mr-2"></i>Add Pro</button>
             </div>
 
             <div className="px-6 pb-28">
-                {/* Bookings View */}
                 {adminTab === 'bookings' && (
                     loadingAdmin ? <div className="text-center py-10"><i className="fas fa-spinner fa-spin text-teal-400 text-4xl"></i></div> : adminBookings.map(booking => {
                         return (
@@ -276,37 +356,14 @@ const MainApp = () => {
                     })
                 )}
 
-                {/* Add Professional View */}
                 {adminTab === 'addPro' && (
                     <form onSubmit={handleAddProfessional} className="bg-gray-800 p-6 rounded-2xl border border-gray-700 flex flex-col gap-4">
-                        <div>
-                            <label className="text-xs font-bold text-gray-400">Full Name</label>
-                            <input type="text" required value={newProData.name} onChange={e => setNewProData({...newProData, name: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-xl mt-1 outline-none focus:border-teal-500" placeholder="e.g. John Smith" />
-                        </div>
-                        <div>
-                            <label className="text-xs font-bold text-gray-400">Job Title</label>
-                            <input type="text" required value={newProData.title} onChange={e => setNewProData({...newProData, title: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-xl mt-1 outline-none focus:border-teal-500" placeholder="e.g. Master Electrician" />
-                        </div>
-                        <div>
-                            <label className="text-xs font-bold text-gray-400">Category</label>
-                            <select value={newProData.category} onChange={e => setNewProData({...newProData, category: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-xl mt-1 outline-none focus:border-teal-500">
-                                <option value="cleaning">Cleaning</option>
-                                <option value="electric">Electric</option>
-                                <option value="plumbing">Plumbing</option>
-                                <option value="ac">AC Repair</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="text-xs font-bold text-gray-400">Hourly Price (₦)</label>
-                            <input type="number" required value={newProData.price} onChange={e => setNewProData({...newProData, price: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-xl mt-1 outline-none focus:border-teal-500" placeholder="e.g. 15000" />
-                        </div>
-                        <div>
-                            <label className="text-xs font-bold text-gray-400">Avatar Image URL (Optional)</label>
-                            <input type="text" value={newProData.avatar} onChange={e => setNewProData({...newProData, avatar: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-xl mt-1 outline-none focus:border-teal-500" placeholder="https://..." />
-                        </div>
-                        <button type="submit" disabled={isAddingPro} className="w-full bg-teal-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-teal-500 transition">
-                            {isAddingPro ? 'Adding...' : 'Add Professional to Platform'}
-                        </button>
+                        <div><label className="text-xs font-bold text-gray-400">Full Name</label><input type="text" required value={newProData.name} onChange={e => setNewProData({...newProData, name: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-xl mt-1" /></div>
+                        <div><label className="text-xs font-bold text-gray-400">Job Title</label><input type="text" required value={newProData.title} onChange={e => setNewProData({...newProData, title: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-xl mt-1" /></div>
+                        <div><label className="text-xs font-bold text-gray-400">Category</label><select value={newProData.category} onChange={e => setNewProData({...newProData, category: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-xl mt-1"><option value="cleaning">Cleaning</option><option value="electric">Electric</option><option value="plumbing">Plumbing</option><option value="ac">AC Repair</option></select></div>
+                        <div><label className="text-xs font-bold text-gray-400">Hourly Price (₦)</label><input type="number" required value={newProData.price} onChange={e => setNewProData({...newProData, price: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-xl mt-1" /></div>
+                        <div><label className="text-xs font-bold text-gray-400">Avatar Image URL</label><input type="text" value={newProData.avatar} onChange={e => setNewProData({...newProData, avatar: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-xl mt-1" /></div>
+                        <button type="submit" disabled={isAddingPro} className="w-full bg-teal-600 text-white font-bold py-4 rounded-xl mt-4">{isAddingPro ? 'Adding...' : 'Add Professional'}</button>
                     </form>
                 )}
             </div>
@@ -374,8 +431,7 @@ const MainApp = () => {
                      <div className="p-6 text-center">
                          <h1 className="text-2xl font-bold text-primary">{viewingProfile.name}</h1>
                          <p className="text-teal-600 font-medium mb-4">{viewingProfile.title}</p>
-                         <p className="text-gray-500 text-sm leading-relaxed mb-6">Highly skilled and reliable professional with years of experience.</p>
-                         <button onClick={() => setBookingPro(viewingProfile)} className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl shadow-lg">Book Service Now</button>
+                         <button onClick={() => setBookingPro(viewingProfile)} className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl shadow-lg mt-4">Book Service Now</button>
                      </div>
                  </div>
              </div>
