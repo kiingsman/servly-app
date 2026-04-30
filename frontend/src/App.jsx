@@ -2,6 +2,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import io from 'socket.io-client';
 
+// --- NEW: Map Imports ---
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+
+// Fix for default Leaflet marker icons in React
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
+
 let rawUrl = import.meta.env.VITE_BACKEND_URL || 'https://servly-app-icy0.onrender.com';
 const backendUrl = rawUrl.replace(/\/$/, "");
 const socket = io(backendUrl);
@@ -94,23 +107,10 @@ const ClientApp = () => {
   const [activeChatRoom, setActiveChatRoom] = useState(null); 
   const chatEndRef = useRef(null);
 
-  // NOTIFICATION STATE
-  const [notifications, setNotifications] = useState([]);
-  const [showNotifs, setShowNotifs] = useState(false);
-  const unreadCount = notifications.filter(n => !n.isRead).length;
-
   useEffect(() => {
     fetch(`${backendUrl}/api/professionals`).then(res => res.json()).then(data => { setProfessionals(data); setLoadingPros(false); });
-    
-    // Fetch initial notifications
-    fetch(`${backendUrl}/api/notifications`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } })
-      .then(res => res.json()).then(data => setNotifications(data)).catch(() => {});
-
-    // Listen for socket events
     socket.on('receive_message', (data) => setMessageList((list) => [...list, data]));
-    socket.on('new_notification', (notif) => setNotifications((prev) => [notif, ...prev]));
-
-    return () => { socket.off('receive_message'); socket.off('new_notification'); };
+    return () => socket.off('receive_message');
   }, []);
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messageList, activeTab]);
@@ -151,12 +151,6 @@ const ClientApp = () => {
       }
   };
 
-  const markNotifsRead = () => {
-      fetch(`${backendUrl}/api/notifications/read`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } });
-      setNotifications(prev => prev.map(n => ({...n, isRead: true})));
-      setShowNotifs(false);
-  };
-
   const categories = [ { id: 'electric', name: 'Electric', icon: 'fa-bolt', color: 'text-orange-500', bg: 'bg-orange-50' }, { id: 'plumbing', name: 'Plumbing', icon: 'fa-wrench', color: 'text-teal-600', bg: 'bg-teal-50' }, { id: 'cleaning', name: 'Cleaning', icon: 'fa-broom', color: 'text-blue-500', bg: 'bg-blue-50' }, { id: 'ac', name: 'AC Repair', icon: 'fa-snowflake', color: 'text-purple-500', bg: 'bg-purple-50' } ];
 
   return (
@@ -169,14 +163,7 @@ const ClientApp = () => {
                         <p className="text-xs text-gray-500 font-medium">Hello, {user?.name?.split(' ')[0]} 👋</p>
                         <div className="flex items-center text-primary font-bold text-lg mt-1"><i className="fas fa-map-marker-alt text-teal-600 mr-2"></i>Kano, NG</div>
                     </div>
-                    {/* NOTIFICATION BELL */}
-                    <div className="flex items-center gap-3">
-                        <button onClick={() => setShowNotifs(true)} className="relative w-10 h-10 bg-gray-50 rounded-full flex items-center justify-center border border-gray-100">
-                            <i className="far fa-bell text-gray-600"></i>
-                            {unreadCount > 0 && <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse border border-white"></span>}
-                        </button>
-                        <div className="w-10 h-10 bg-teal-100 text-teal-600 font-bold rounded-full flex items-center justify-center">{user?.name?.charAt(0)}</div>
-                    </div>
+                    <div className="w-10 h-10 bg-teal-100 text-teal-600 font-bold rounded-full flex items-center justify-center">{user?.name?.charAt(0)}</div>
                 </div>
                 <div className="relative flex items-center">
                     <i className="fas fa-search absolute left-4 text-gray-400 z-10"></i>
@@ -220,7 +207,6 @@ const ClientApp = () => {
           </>
         )}
 
-        {/* ... (Keep Bookings, Chat, Profile identical structure) */}
         {activeTab === 'bookings' && (
           <div className="flex-1 overflow-y-auto px-6 pt-10 pb-28 bg-gray-50">
             <h2 className="text-2xl font-bold text-primary mb-6">My Bookings</h2>
@@ -274,26 +260,13 @@ const ClientApp = () => {
           <div className="flex-1 overflow-y-auto px-6 pt-10 bg-gray-50 text-center">
             <h2 className="text-2xl font-bold mb-6">My Account</h2>
             <div className="bg-white p-6 rounded-3xl mb-6 shadow-sm"><div className="w-24 h-24 bg-teal-100 text-teal-600 rounded-full mx-auto mb-4 flex items-center justify-center text-4xl font-bold">{user?.name?.charAt(0)}</div><h3 className="font-bold text-xl">{user?.name}</h3><button onClick={logout} className="bg-red-50 text-red-500 font-bold py-3 mt-6 rounded-xl w-full">Log Out</button></div>
+            
+            {user?.role === 'admin' && (
+                <div onClick={() => setActiveTab('admin')} className="bg-gray-900 p-4 rounded-2xl flex items-center justify-between cursor-pointer mt-4">
+                    <div className="flex items-center"><div className="w-10 h-10 bg-gray-800 rounded-xl flex items-center justify-center mr-4"><i className="fas fa-shield-alt text-teal-400"></i></div><div><h4 className="text-white font-bold text-sm">Admin Dashboard</h4></div></div>
+                </div>
+            )}
           </div>
-        )}
-
-        {/* NOTIFICATIONS MODAL OVERLAY */}
-        {showNotifs && (
-            <div className="absolute inset-0 bg-white z-50 flex flex-col animate-[slideUp_0.3s_ease-out]">
-                <div className="flex justify-between items-center p-6 border-b border-gray-100">
-                    <h2 className="font-bold text-xl text-primary">Notifications</h2>
-                    <button onClick={markNotifsRead} className="bg-gray-100 h-10 w-10 rounded-full"><i className="fas fa-times"></i></button>
-                </div>
-                <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
-                    {notifications.length === 0 ? <p className="text-center text-gray-500 mt-10">No new notifications</p> : notifications.map(n => (
-                        <div key={n._id} className={`p-4 mb-3 rounded-2xl shadow-sm ${n.isRead ? 'bg-white border border-gray-100' : 'bg-teal-50 border border-teal-100'}`}>
-                            <h4 className="font-bold text-sm text-primary mb-1">{n.title}</h4>
-                            <p className="text-xs text-gray-600">{n.message}</p>
-                            <p className="text-[10px] text-gray-400 mt-2">{new Date(n.createdAt).toLocaleString()}</p>
-                        </div>
-                    ))}
-                </div>
-            </div>
         )}
 
         {/* BOOKING/PROFILE OVERLAYS... */}
@@ -303,7 +276,7 @@ const ClientApp = () => {
                 {isBookingSuccess ? (
                     <div className="flex-1 flex flex-col items-center justify-center p-6"><h2 className="text-2xl font-bold mb-2">Booking Confirmed!</h2><button onClick={() => { setBookingPro(null); setIsBookingSuccess(false); setActiveTab('bookings'); }} className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl mt-8">View Bookings</button></div>
                 ) : (
-                    <form onSubmit={handleBookingSubmit} className="flex-1 p-6 flex flex-col"><input type="date" required className="w-full bg-gray-50 p-4 rounded-xl mb-6" value={bookingData.date} onChange={e => setBookingData({...bookingData, date: e.target.value})} /><div className="grid grid-cols-3 gap-3 mb-6">{['10:00 AM', '1:00 PM', '4:00 PM'].map(time => <div key={time} onClick={() => setBookingData({...bookingData, time})} className={`text-center py-3 rounded-xl text-sm font-medium cursor-pointer ${bookingData.time === time ? 'bg-teal-600 text-white' : 'bg-gray-50'}`}>{time}</div>)}</div><textarea required className="w-full bg-gray-50 p-4 rounded-xl mb-6 h-28" value={bookingData.address} onChange={e => setBookingData({...bookingData, address: e.target.value})}></textarea><button type="submit" className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl mt-auto">Confirm Booking</button></form>
+                    <form onSubmit={handleBookingSubmit} className="flex-1 p-6 flex flex-col"><input type="date" required className="w-full bg-gray-50 p-4 rounded-xl mb-6" value={bookingData.date} onChange={e => setBookingData({...bookingData, date: e.target.value})} /><div className="grid grid-cols-3 gap-3 mb-6">{['10:00 AM', '1:00 PM', '4:00 PM'].map(time => <div key={time} onClick={() => setBookingData({...bookingData, time})} className={`text-center py-3 rounded-xl text-sm font-medium cursor-pointer ${bookingData.time === time ? 'bg-teal-600 text-white' : 'bg-gray-50'}`}>{time}</div>)}</div><textarea required className="w-full bg-gray-50 p-4 rounded-xl mb-6 h-28" value={bookingData.address} onChange={e => setBookingData({...bookingData, address: e.target.value})} placeholder="Full Address"></textarea><button type="submit" className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl mt-auto">Confirm Booking</button></form>
                 )}
             </div>
         )}
@@ -324,7 +297,7 @@ const ClientApp = () => {
 };
 
 // ==========================================
-// PROFESSIONAL DASHBOARD
+// PROFESSIONAL DASHBOARD (WITH MAP)
 // ==========================================
 const ProfessionalApp = () => {
     const { user, logout } = useAuth();
@@ -336,22 +309,18 @@ const ProfessionalApp = () => {
     const [currentMessage, setCurrentMessage] = useState('');
     const chatEndRef = useRef(null);
 
-    // NOTIFICATION STATE
-    const [notifications, setNotifications] = useState([]);
-    const [showNotifs, setShowNotifs] = useState(false);
-    const unreadCount = notifications.filter(n => !n.isRead).length;
+    // --- NEW: Map State ---
+    const [viewingMapForJob, setViewingMapForJob] = useState(null);
+
+    // Mock coordinates for Kano (In a real app, geocode the address string to get exact lat/lng)
+    const kanoPosition = [11.9964, 8.5167];
 
     useEffect(() => {
         fetch(`${backendUrl}/api/pro/bookings`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } })
             .then(res => res.json()).then(data => setJobs(data));
 
-        fetch(`${backendUrl}/api/notifications`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } })
-            .then(res => res.json()).then(data => setNotifications(data));
-
         socket.on('receive_message', (data) => setMessageList((list) => [...list, data]));
-        socket.on('new_notification', (notif) => setNotifications((prev) => [notif, ...prev]));
-
-        return () => { socket.off('receive_message'); socket.off('new_notification'); };
+        return () => socket.off('receive_message');
     }, []);
 
     useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messageList]);
@@ -375,27 +344,24 @@ const ProfessionalApp = () => {
         if (res.ok) setJobs(prev => prev.map(j => j._id === jobId ? { ...j, status } : j));
     };
 
-    const markNotifsRead = () => {
-        fetch(`${backendUrl}/api/notifications/read`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } });
-        setNotifications(prev => prev.map(n => ({...n, isRead: true})));
-        setShowNotifs(false);
-    };
-
     return (
         <div className="bg-gray-900 w-full max-w-md mx-auto h-screen md:h-[850px] relative flex flex-col text-white md:rounded-[2.5rem] md:shadow-2xl">
             {activeTab === 'jobs' && (
                 <div className="flex-1 overflow-y-auto px-6 pt-10 pb-28">
                     <div className="flex justify-between items-center mb-6">
                         <h2 className="text-2xl font-bold">My Jobs</h2>
-                        <button onClick={() => setShowNotifs(true)} className="relative w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center">
-                            <i className="far fa-bell text-gray-400"></i>
-                            {unreadCount > 0 && <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-teal-400 rounded-full animate-pulse"></span>}
-                        </button>
                     </div>
                     {jobs.map(job => (
                         <div key={job._id} className="bg-gray-800 p-5 rounded-2xl mb-4">
                             <div className="flex justify-between mb-3 border-b border-gray-700 pb-3"><h3 className="font-bold">{job.clientName}</h3><div className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-gray-700">{job.status}</div></div>
-                            <p className="text-sm text-gray-300 mb-2">{new Date(job.date).toLocaleDateString()} at {job.time}</p>
+                            <p className="text-sm text-gray-300 mb-2"><i className="far fa-calendar-alt text-teal-400 mr-2"></i>{new Date(job.date).toLocaleDateString()} at {job.time}</p>
+                            
+                            {/* Updated Address with Map Button */}
+                            <div className="flex justify-between items-center mb-4">
+                                <p className="text-sm text-gray-300"><i className="fas fa-map-marker-alt text-teal-400 mr-2"></i>{job.address.substring(0, 20)}...</p>
+                                <button onClick={() => setViewingMapForJob(job)} className="bg-gray-700 text-teal-400 px-3 py-1 rounded text-xs font-bold"><i className="fas fa-map mr-1"></i>View Map</button>
+                            </div>
+                            
                             <div className="flex gap-2 mt-4">
                                 <button onClick={() => openChat(job)} className="flex-1 py-2 bg-gray-700 text-xs font-bold rounded-lg">Chat</button>
                                 {job.status === 'pending' && <button onClick={() => updateJobStatus(job._id, 'confirmed')} className="flex-1 py-2 bg-teal-600 text-xs font-bold rounded-lg">Accept</button>}
@@ -427,26 +393,39 @@ const ProfessionalApp = () => {
                 <div className="flex-1 p-6 pt-10 text-center"><h2 className="text-2xl font-bold mb-6">Pro Account</h2><div className="w-24 h-24 bg-gray-800 rounded-full mx-auto mb-4 flex items-center justify-center text-3xl font-bold text-teal-400">{user?.name?.charAt(0)}</div><h3 className="font-bold text-xl">{user?.name}</h3><button onClick={logout} className="w-full bg-red-500/20 text-red-400 py-3 rounded-xl mt-6">Log Out</button></div>
             )}
 
-            {/* NOTIFICATIONS MODAL OVERLAY */}
-            {showNotifs && (
-                <div className="absolute inset-0 bg-gray-900 z-50 flex flex-col animate-[slideUp_0.3s_ease-out]">
-                    <div className="flex justify-between items-center p-6 border-b border-gray-800">
-                        <h2 className="font-bold text-xl">Notifications</h2>
-                        <button onClick={markNotifsRead} className="bg-gray-800 h-10 w-10 rounded-full"><i className="fas fa-times"></i></button>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-4">
-                        {notifications.length === 0 ? <p className="text-center text-gray-500 mt-10">No new notifications</p> : notifications.map(n => (
-                            <div key={n._id} className={`p-4 mb-3 rounded-2xl ${n.isRead ? 'bg-gray-800 border border-gray-700' : 'bg-gray-800 border border-teal-500'}`}>
-                                <h4 className={`font-bold text-sm mb-1 ${n.isRead ? 'text-gray-300' : 'text-teal-400'}`}>{n.title}</h4>
-                                <p className="text-xs text-gray-400">{n.message}</p>
-                                <p className="text-[10px] text-gray-600 mt-2">{new Date(n.createdAt).toLocaleString()}</p>
-                            </div>
-                        ))}
-                    </div>
-                </div>
+            {/* --- MAP OVERLAY MODAL --- */}
+            {viewingMapForJob && (
+                 <div className="absolute inset-0 bg-gray-900 z-50 flex flex-col animate-[slideUp_0.3s_ease-out]">
+                     <div className="p-6 border-b border-gray-800 flex justify-between items-center">
+                         <div>
+                             <h2 className="text-xl font-bold text-white">Client Location</h2>
+                             <p className="text-xs text-teal-400">Navigating to {viewingMapForJob.clientName}</p>
+                         </div>
+                         <button onClick={() => setViewingMapForJob(null)} className="h-10 w-10 rounded-full bg-gray-800 text-gray-400"><i className="fas fa-times"></i></button>
+                     </div>
+                     <div className="flex-1 w-full bg-gray-800 relative">
+                         {/* Leaflet Map Component */}
+                         <MapContainer center={kanoPosition} zoom={13} style={{ height: '100%', width: '100%', zIndex: 1 }}>
+                             <TileLayer
+                                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                             />
+                             <Marker position={kanoPosition}>
+                                 <Popup>
+                                     <strong>{viewingMapForJob.clientName}'s Location</strong><br/>
+                                     {viewingMapForJob.address}
+                                 </Popup>
+                             </Marker>
+                         </MapContainer>
+                     </div>
+                     <div className="p-6 bg-gray-900 border-t border-gray-800 text-center">
+                         <p className="text-sm text-gray-400 mb-4">{viewingMapForJob.address}</p>
+                         <button onClick={() => setViewingMapForJob(null)} className="w-full bg-teal-600 text-white font-bold py-4 rounded-xl">Close Map</button>
+                     </div>
+                 </div>
             )}
 
-            <div className="absolute bottom-0 w-full border-t border-gray-800 px-6 py-4 flex justify-between z-20">
+            <div className="absolute bottom-0 w-full border-t border-gray-800 px-6 py-4 flex justify-between z-20 bg-gray-900">
                 {['jobs', 'chat', 'profile'].map((tab, idx) => (
                     <div key={tab} onClick={() => setActiveTab(tab)} className={`flex flex-col items-center cursor-pointer ${activeTab === tab ? 'text-teal-400' : 'text-gray-600'}`}><i className={`fas ${['fa-briefcase', 'fa-comment-dots', 'fa-user'][idx]} text-xl mb-1`}></i><span className="text-[10px] font-bold">{tab}</span></div>
                 ))}
@@ -461,11 +440,6 @@ const ProfessionalApp = () => {
 const AppController = () => {
   const { user, loading } = useAuth();
   
-  useEffect(() => {
-      // 1. Tell the server who we are for Push Notifications!
-      if (user) socket.emit('register_user', user.id);
-  }, [user]);
-
   if (loading) return <div className="h-screen bg-gray-200 flex items-center justify-center"><i className="fas fa-circle-notch fa-spin text-teal-600 text-4xl"></i></div>;
   if (!user) return <AuthScreen />;
   
