@@ -7,7 +7,6 @@ import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
-// Fix for default Leaflet marker icons in React
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -95,7 +94,6 @@ const ClientApp = () => {
   const [professionals, setProfessionals] = useState([]);
   const [loadingPros, setLoadingPros] = useState(true);
   const [myBookings, setMyBookings] = useState([]);
-  const [loadingBookings, setLoadingBookings] = useState(false);
 
   const [viewingProfile, setViewingProfile] = useState(null);
   const [bookingPro, setBookingPro] = useState(null);
@@ -107,21 +105,43 @@ const ClientApp = () => {
   const [activeChatRoom, setActiveChatRoom] = useState(null); 
   const chatEndRef = useRef(null);
 
+  // --- LIVE LOCATION STATE ---
+  const [isSharingLocation, setIsSharingLocation] = useState(false);
+  const [partnerLocation, setPartnerLocation] = useState(null);
+  const [viewingLiveMap, setViewingLiveMap] = useState(false);
+  const watchIdRef = useRef(null);
+
   useEffect(() => {
     fetch(`${backendUrl}/api/professionals`).then(res => res.json()).then(data => { setProfessionals(data); setLoadingPros(false); });
+    
     socket.on('receive_message', (data) => setMessageList((list) => [...list, data]));
-    return () => socket.off('receive_message');
+    socket.on('receive_live_location', (data) => {
+        if (data.lat === null) setPartnerLocation(null);
+        else setPartnerLocation({ lat: data.lat, lng: data.lng, author: data.author });
+    });
+
+    return () => { 
+        socket.off('receive_message'); 
+        socket.off('receive_live_location'); 
+        if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current);
+    };
   }, []);
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messageList, activeTab]);
 
   useEffect(() => {
     if (activeTab === 'bookings') {
-      setLoadingBookings(true);
       fetch(`${backendUrl}/api/bookings`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } })
-        .then(res => res.json()).then(data => { setMyBookings(data); setLoadingBookings(false); });
+        .then(res => res.json()).then(data => setMyBookings(data));
     }
     if (activeTab === 'chat' && activeChatRoom) socket.emit('join_room', activeChatRoom._id);
+
+    // Stop sharing location if we leave the chat tab
+    if (activeTab !== 'chat' && isSharingLocation) {
+        if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current);
+        setIsSharingLocation(false);
+        if (activeChatRoom) socket.emit('live_location_update', { room: activeChatRoom._id, lat: null, lng: null, author: user.name });
+    }
   }, [activeTab, activeChatRoom]);
 
   const handleBookingSubmit = (e) => {
@@ -148,6 +168,23 @@ const ClientApp = () => {
           const messageData = { room: activeChatRoom._id, author: user.name, message: currentMessage, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) };
           await socket.emit('send_message', messageData);
           setMessageList((list) => [...list, messageData]); setCurrentMessage(""); 
+      }
+  };
+
+  // --- NEW: Toggle Location Sharing ---
+  const toggleLocationSharing = () => {
+      if (isSharingLocation) {
+          if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current);
+          setIsSharingLocation(false);
+          socket.emit('live_location_update', { room: activeChatRoom._id, lat: null, lng: null, author: user.name });
+      } else {
+          if (navigator.geolocation) {
+              const id = navigator.geolocation.watchPosition((pos) => {
+                  socket.emit('live_location_update', { room: activeChatRoom._id, lat: pos.coords.latitude, lng: pos.coords.longitude, author: user.name });
+              }, (err) => alert("Could not access GPS. Please allow location permissions."), { enableHighAccuracy: true });
+              watchIdRef.current = id;
+              setIsSharingLocation(true);
+          } else { alert("Geolocation is not supported by your browser."); }
       }
   };
 
@@ -238,6 +275,18 @@ const ClientApp = () => {
                         <button onClick={() => setActiveTab('bookings')} className="mr-4 text-gray-400"><i className="fas fa-chevron-left"></i></button>
                         <h2 className="text-lg font-bold">{activeChatRoom.professionalName}</h2>
                     </div>
+
+                    {/* LIVE LOCATION NOTIFICATION BANNER */}
+                    {partnerLocation && (
+                        <div className="bg-blue-50 border-b border-blue-100 p-3 flex justify-between items-center z-10 shadow-sm">
+                            <div className="flex items-center">
+                                <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse mr-2 border border-white"></div>
+                                <p className="text-xs text-blue-800 font-bold">{partnerLocation.author} is sharing live location</p>
+                            </div>
+                            <button onClick={() => setViewingLiveMap(true)} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm">View Map</button>
+                        </div>
+                    )}
+
                     <div className="flex-1 overflow-y-auto px-4 py-6 flex flex-col gap-4">
                         {messageList.map((msg, idx) => (
                             <div key={idx} className={`flex flex-col ${msg.author === user.name ? 'items-end' : 'items-start'}`}>
@@ -247,13 +296,39 @@ const ClientApp = () => {
                         ))}
                         <div ref={chatEndRef} />
                     </div>
-                    <div className="absolute bottom-[72px] w-full bg-white p-4 flex gap-3">
-                        <input type="text" value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} onKeyPress={(e) => e.key === "Enter" && sendMessage()} className="flex-1 bg-gray-100 p-3 rounded-xl text-sm" placeholder="Type a message..." />
+
+                    <div className="absolute bottom-[72px] w-full bg-white p-4 flex gap-2 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.05)]">
+                        {/* NEW: LIVE LOCATION BUTTON */}
+                        <button onClick={toggleLocationSharing} className={`w-12 h-12 rounded-xl flex items-center justify-center transition shadow-sm ${isSharingLocation ? 'bg-red-50 text-red-500 hover:bg-red-100' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`} title="Share Live Location">
+                            <i className={`fas fa-map-marker-alt ${isSharingLocation && 'animate-bounce'}`}></i>
+                        </button>
+                        <input type="text" value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} onKeyPress={(e) => e.key === "Enter" && sendMessage()} className="flex-1 bg-gray-100 p-3 rounded-xl text-sm outline-none" placeholder="Message..." />
                         <button onClick={sendMessage} className="bg-teal-600 text-white w-12 rounded-xl"><i className="fas fa-paper-plane"></i></button>
                     </div>
                  </>
              )}
           </div>
+        )}
+
+        {/* --- LIVE TRACKING MAP OVERLAY (CLIENT) --- */}
+        {viewingLiveMap && partnerLocation && (
+             <div className="absolute inset-0 bg-white z-50 flex flex-col animate-[slideUp_0.3s_ease-out]">
+                 <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                     <div>
+                         <h2 className="text-xl font-bold text-primary">Live Tracking</h2>
+                         <p className="text-xs text-teal-600 font-medium">Tracking {partnerLocation.author}</p>
+                     </div>
+                     <button onClick={() => setViewingLiveMap(false)} className="h-10 w-10 rounded-full bg-gray-100 text-gray-600"><i className="fas fa-times"></i></button>
+                 </div>
+                 <div className="flex-1 w-full relative">
+                     <MapContainer center={[partnerLocation.lat, partnerLocation.lng]} zoom={16} style={{ height: '100%', width: '100%', zIndex: 1 }}>
+                         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                         <Marker position={[partnerLocation.lat, partnerLocation.lng]}>
+                             <Popup>{partnerLocation.author} is here!</Popup>
+                         </Marker>
+                     </MapContainer>
+                 </div>
+             </div>
         )}
 
         {activeTab === 'profile' && (
@@ -269,7 +344,7 @@ const ClientApp = () => {
           </div>
         )}
 
-        {/* BOOKING/PROFILE OVERLAYS... */}
+        {/* BOOKING OVERLAY */}
         {bookingPro && (
             <div className="absolute inset-0 bg-white z-50 flex flex-col">
                 <div className="flex justify-between items-center p-6 border-b"><h2 className="font-bold text-xl">Book Service</h2><button onClick={() => { setBookingPro(null); setIsBookingSuccess(false); }} className="bg-gray-100 h-10 w-10 rounded-full"><i className="fas fa-times"></i></button></div>
@@ -279,12 +354,6 @@ const ClientApp = () => {
                     <form onSubmit={handleBookingSubmit} className="flex-1 p-6 flex flex-col"><input type="date" required className="w-full bg-gray-50 p-4 rounded-xl mb-6" value={bookingData.date} onChange={e => setBookingData({...bookingData, date: e.target.value})} /><div className="grid grid-cols-3 gap-3 mb-6">{['10:00 AM', '1:00 PM', '4:00 PM'].map(time => <div key={time} onClick={() => setBookingData({...bookingData, time})} className={`text-center py-3 rounded-xl text-sm font-medium cursor-pointer ${bookingData.time === time ? 'bg-teal-600 text-white' : 'bg-gray-50'}`}>{time}</div>)}</div><textarea required className="w-full bg-gray-50 p-4 rounded-xl mb-6 h-28" value={bookingData.address} onChange={e => setBookingData({...bookingData, address: e.target.value})} placeholder="E.g. Zoo Road, Kano"></textarea><button type="submit" className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl mt-auto">Confirm Booking</button></form>
                 )}
             </div>
-        )}
-        {viewingProfile && !bookingPro && (
-             <div className="absolute inset-0 bg-white z-40 flex flex-col">
-                 <div className="p-6 border-b"><button onClick={() => setViewingProfile(null)} className="h-10 w-10 rounded-full bg-gray-50"><i className="fas fa-chevron-left"></i></button></div>
-                 <div className="flex-1 p-6 text-center"><img src={viewingProfile.avatar} className="w-28 h-28 rounded-full mx-auto mt-6" /><h1 className="text-2xl font-bold mt-4">{viewingProfile.name}</h1><button onClick={() => setBookingPro(viewingProfile)} className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl mt-8">Book Service</button></div>
-             </div>
         )}
 
         <div className="absolute bottom-0 w-full bg-white border-t px-6 py-4 flex justify-between z-20">
@@ -297,7 +366,7 @@ const ClientApp = () => {
 };
 
 // ==========================================
-// PROFESSIONAL DASHBOARD (WITH DYNAMIC MAP)
+// PROFESSIONAL DASHBOARD (WITH LIVE TRACKING)
 // ==========================================
 const ProfessionalApp = () => {
     const { user, logout } = useAuth();
@@ -309,20 +378,44 @@ const ProfessionalApp = () => {
     const [currentMessage, setCurrentMessage] = useState('');
     const chatEndRef = useRef(null);
 
-    // --- GEOCODING MAP STATE ---
+    // GEOCODING MAP STATE
     const [viewingMapForJob, setViewingMapForJob] = useState(null);
-    const [mapPosition, setMapPosition] = useState([11.9964, 8.5167]); // Default: Kano
+    const [mapPosition, setMapPosition] = useState([11.9964, 8.5167]); 
     const [isMapLoading, setIsMapLoading] = useState(false);
+
+    // --- LIVE LOCATION STATE ---
+    const [isSharingLocation, setIsSharingLocation] = useState(false);
+    const [partnerLocation, setPartnerLocation] = useState(null);
+    const [viewingLiveMap, setViewingLiveMap] = useState(false);
+    const watchIdRef = useRef(null);
 
     useEffect(() => {
         fetch(`${backendUrl}/api/pro/bookings`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } })
             .then(res => res.json()).then(data => setJobs(data));
 
         socket.on('receive_message', (data) => setMessageList((list) => [...list, data]));
-        return () => socket.off('receive_message');
+        socket.on('receive_live_location', (data) => {
+            if (data.lat === null) setPartnerLocation(null);
+            else setPartnerLocation({ lat: data.lat, lng: data.lng, author: data.author });
+        });
+
+        return () => { 
+            socket.off('receive_message'); 
+            socket.off('receive_live_location');
+            if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current);
+        };
     }, []);
 
     useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messageList]);
+
+    useEffect(() => {
+        // Stop sharing location if we leave the chat tab
+        if (activeTab !== 'chat' && isSharingLocation) {
+            if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current);
+            setIsSharingLocation(false);
+            if (activeChatRoom) socket.emit('live_location_update', { room: activeChatRoom._id, lat: null, lng: null, author: user.name });
+        }
+      }, [activeTab, activeChatRoom]);
 
     const openChat = async (job) => {
         setActiveChatRoom(job); setMessageList([]); setActiveTab('chat'); socket.emit('join_room', job._id);
@@ -343,31 +436,32 @@ const ProfessionalApp = () => {
         if (res.ok) setJobs(prev => prev.map(j => j._id === jobId ? { ...j, status } : j));
     };
 
-    // --- NEW: Handle Geocoding ---
     const handleViewMap = async (job) => {
         setViewingMapForJob(job);
         setIsMapLoading(true);
-        
         try {
-            // Add 'Kano, Nigeria' to the search query if it's not already in the address text
-            // This helps the OpenStreetMap API find local streets better.
             const searchQuery = job.address.toLowerCase().includes('kano') ? job.address : `${job.address}, Kano, Nigeria`;
-            
-            // Call the free Nominatim Geocoding API
             const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
             const data = await res.json();
-            
-            if (data && data.length > 0) {
-                // Success! Set the map to the found coordinates
-                setMapPosition([parseFloat(data[0].lat), parseFloat(data[0].lon)]);
-            } else {
-                // Fallback if address is too confusing for the API
-                setMapPosition([11.9964, 8.5167]); 
-            }
-        } catch (err) {
-            setMapPosition([11.9964, 8.5167]);
-        } finally {
-            setIsMapLoading(false);
+            if (data && data.length > 0) setMapPosition([parseFloat(data[0].lat), parseFloat(data[0].lon)]);
+            else setMapPosition([11.9964, 8.5167]); 
+        } catch (err) { setMapPosition([11.9964, 8.5167]); } finally { setIsMapLoading(false); }
+    };
+
+    // --- NEW: Toggle Location Sharing ---
+    const toggleLocationSharing = () => {
+        if (isSharingLocation) {
+            if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current);
+            setIsSharingLocation(false);
+            socket.emit('live_location_update', { room: activeChatRoom._id, lat: null, lng: null, author: user.name });
+        } else {
+            if (navigator.geolocation) {
+                const id = navigator.geolocation.watchPosition((pos) => {
+                    socket.emit('live_location_update', { room: activeChatRoom._id, lat: pos.coords.latitude, lng: pos.coords.longitude, author: user.name });
+                }, (err) => alert("Could not access GPS. Please allow location permissions."), { enableHighAccuracy: true });
+                watchIdRef.current = id;
+                setIsSharingLocation(true);
+            } else { alert("Geolocation is not supported by your browser."); }
         }
     };
 
@@ -403,23 +497,60 @@ const ProfessionalApp = () => {
                     {activeChatRoom && (
                         <>
                             <div className="px-6 pt-10 pb-4 border-b border-gray-800 flex items-center"><button onClick={() => setActiveTab('jobs')} className="mr-4 text-gray-400"><i className="fas fa-chevron-left"></i></button><h2 className="text-lg font-bold">{activeChatRoom.clientName}</h2></div>
+                            
+                            {/* LIVE LOCATION NOTIFICATION BANNER */}
+                            {partnerLocation && (
+                                <div className="bg-gray-800 border-b border-teal-500/30 p-3 flex justify-between items-center z-10 shadow-sm">
+                                    <div className="flex items-center">
+                                        <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse mr-2 border border-gray-800"></div>
+                                        <p className="text-xs text-teal-400 font-bold">{partnerLocation.author} is sharing live location</p>
+                                    </div>
+                                    <button onClick={() => setViewingLiveMap(true)} className="bg-teal-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm">View Map</button>
+                                </div>
+                            )}
+
                             <div className="flex-1 overflow-y-auto px-4 py-6 flex flex-col gap-4">
                                 {messageList.map((msg, idx) => (
                                     <div key={idx} className={`flex flex-col ${msg.author === user.name ? 'items-end' : 'items-start'}`}><div className={`px-4 py-3 rounded-2xl max-w-[80%] ${msg.author === user.name ? 'bg-teal-600 rounded-br-none' : 'bg-gray-800 rounded-bl-none'}`}><p className="text-sm">{msg.message}</p></div></div>
                                 ))}
                                 <div ref={chatEndRef} />
                             </div>
-                            <div className="absolute bottom-[72px] w-full p-4 border-t border-gray-800 flex gap-2"><input type="text" value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} onKeyPress={(e) => e.key === "Enter" && sendMessage()} className="flex-1 bg-gray-800 p-3 rounded-xl text-sm" placeholder="Message..." /><button onClick={sendMessage} className="bg-teal-600 w-12 rounded-xl"><i className="fas fa-paper-plane"></i></button></div>
+
+                            <div className="absolute bottom-[72px] w-full p-4 border-t border-gray-800 bg-gray-900 flex gap-2 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.2)]">
+                                {/* NEW: LIVE LOCATION BUTTON */}
+                                <button onClick={toggleLocationSharing} className={`w-12 h-12 rounded-xl flex items-center justify-center transition shadow-sm ${isSharingLocation ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`} title="Share Live Location">
+                                    <i className={`fas fa-map-marker-alt ${isSharingLocation && 'animate-bounce'}`}></i>
+                                </button>
+                                <input type="text" value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} onKeyPress={(e) => e.key === "Enter" && sendMessage()} className="flex-1 bg-gray-800 p-3 rounded-xl text-sm outline-none text-white" placeholder="Message..." />
+                                <button onClick={sendMessage} className="bg-teal-600 w-12 rounded-xl"><i className="fas fa-paper-plane"></i></button>
+                            </div>
                         </>
                     )}
                 </div>
             )}
 
-            {activeTab === 'profile' && (
-                <div className="flex-1 p-6 pt-10 text-center"><h2 className="text-2xl font-bold mb-6">Pro Account</h2><div className="w-24 h-24 bg-gray-800 rounded-full mx-auto mb-4 flex items-center justify-center text-3xl font-bold text-teal-400">{user?.name?.charAt(0)}</div><h3 className="font-bold text-xl">{user?.name}</h3><button onClick={logout} className="w-full bg-red-500/20 text-red-400 py-3 rounded-xl mt-6">Log Out</button></div>
+            {/* --- LIVE TRACKING MAP OVERLAY (PRO) --- */}
+            {viewingLiveMap && partnerLocation && (
+                 <div className="absolute inset-0 bg-gray-900 z-50 flex flex-col animate-[slideUp_0.3s_ease-out]">
+                     <div className="p-6 border-b border-gray-800 flex justify-between items-center">
+                         <div>
+                             <h2 className="text-xl font-bold text-white">Live Tracking</h2>
+                             <p className="text-xs text-teal-400 font-medium">Tracking {partnerLocation.author}</p>
+                         </div>
+                         <button onClick={() => setViewingLiveMap(false)} className="h-10 w-10 rounded-full bg-gray-800 text-gray-400"><i className="fas fa-times"></i></button>
+                     </div>
+                     <div className="flex-1 w-full bg-gray-800 relative">
+                         <MapContainer center={[partnerLocation.lat, partnerLocation.lng]} zoom={16} style={{ height: '100%', width: '100%', zIndex: 1 }}>
+                             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                             <Marker position={[partnerLocation.lat, partnerLocation.lng]}>
+                                 <Popup>{partnerLocation.author} is here!</Popup>
+                             </Marker>
+                         </MapContainer>
+                     </div>
+                 </div>
             )}
 
-            {/* --- MAP OVERLAY MODAL --- */}
+            {/* GEOCODING MAP OVERLAY */}
             {viewingMapForJob && (
                  <div className="absolute inset-0 bg-gray-900 z-50 flex flex-col animate-[slideUp_0.3s_ease-out]">
                      <div className="p-6 border-b border-gray-800 flex justify-between items-center">
@@ -442,19 +573,17 @@ const ProfessionalApp = () => {
                                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                                  />
                                  <Marker position={mapPosition}>
-                                     <Popup>
-                                         <strong>{viewingMapForJob.clientName}'s Location</strong><br/>
-                                         {viewingMapForJob.address}
-                                     </Popup>
+                                     <Popup><strong>{viewingMapForJob.clientName}'s Location</strong><br/>{viewingMapForJob.address}</Popup>
                                  </Marker>
                              </MapContainer>
                          )}
                      </div>
-                     <div className="p-6 bg-gray-900 border-t border-gray-800 text-center">
-                         <p className="text-sm text-gray-400 mb-4">{viewingMapForJob.address}</p>
-                         <button onClick={() => setViewingMapForJob(null)} className="w-full bg-teal-600 text-white font-bold py-4 rounded-xl">Close Map</button>
-                     </div>
+                     <div className="p-6 bg-gray-900 border-t border-gray-800 text-center"><p className="text-sm text-gray-400 mb-4">{viewingMapForJob.address}</p><button onClick={() => setViewingMapForJob(null)} className="w-full bg-teal-600 text-white font-bold py-4 rounded-xl">Close Map</button></div>
                  </div>
+            )}
+
+            {activeTab === 'profile' && (
+                <div className="flex-1 p-6 pt-10 text-center"><h2 className="text-2xl font-bold mb-6">Pro Account</h2><div className="w-24 h-24 bg-gray-800 rounded-full mx-auto mb-4 flex items-center justify-center text-3xl font-bold text-teal-400">{user?.name?.charAt(0)}</div><h3 className="font-bold text-xl">{user?.name}</h3><button onClick={logout} className="w-full bg-red-500/20 text-red-400 py-3 rounded-xl mt-6">Log Out</button></div>
             )}
 
             <div className="absolute bottom-0 w-full border-t border-gray-800 px-6 py-4 flex justify-between z-20 bg-gray-900">
@@ -471,13 +600,10 @@ const ProfessionalApp = () => {
 // ==========================================
 const AppController = () => {
   const { user, loading } = useAuth();
-  
   if (loading) return <div className="h-screen bg-gray-200 flex items-center justify-center"><i className="fas fa-circle-notch fa-spin text-teal-600 text-4xl"></i></div>;
   if (!user) return <AuthScreen />;
-  
   if (user.role === 'professional') return <ProfessionalApp />;
   return <ClientApp />; 
 };
-
 const App = () => ( <AuthProvider><AppController /></AuthProvider> );
 export default App;

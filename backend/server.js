@@ -12,7 +12,7 @@ const auth = require('./middleware/auth');
 const User = require('./models/User'); 
 const Booking = require('./models/Booking');
 const Professional = require('./models/Professional');
-const Notification = require('./models/Notification'); // <-- NEW
+const Notification = require('./models/Notification'); 
 
 const messageSchema = new mongoose.Schema({
     bookingId: { type: String, required: true },
@@ -34,27 +34,23 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/servly', { 
 .then(() => console.log('✅ MongoDB Connected!'))
 .catch(err => console.log('❌ MongoDB Error:', err));
 
-app.get('/', (req, res) => res.send('Servly API with Notifications!'));
+app.get('/', (req, res) => res.send('Servly API with Live Tracking!'));
 
 // ==========================================
 // SOCKET.IO LOGIC
 // ==========================================
-const userSockets = {}; // Tracks which user ID belongs to which active socket connection
+const userSockets = {}; 
 
 io.on('connection', (socket) => {
-    // 1. Register a user's socket when they log in
-    socket.on('register_user', (userId) => {
-        userSockets[userId] = socket.id;
-    });
-
+    socket.on('register_user', (userId) => { userSockets[userId] = socket.id; });
     socket.on('join_room', (room) => socket.join(room));
     
+    // Standard Chat Messages
     socket.on('send_message', async (data) => {
         try {
             await new Message({ bookingId: data.room, author: data.author, message: data.message, time: data.time }).save();
             socket.to(data.room).emit('receive_message', data);
 
-            // Create notification for the offline/away user
             const booking = await Booking.findById(data.room);
             if (booking) {
                 let recipientUserId = null;
@@ -64,21 +60,19 @@ io.on('connection', (socket) => {
                 } else {
                     recipientUserId = booking.userId;
                 }
-
                 if (recipientUserId) {
-                    const notif = new Notification({
-                        userId: recipientUserId,
-                        title: "New Message",
-                        message: `From ${data.author}: "${data.message.substring(0, 30)}..."`,
-                        type: "message"
-                    });
+                    const notif = new Notification({ userId: recipientUserId, title: "New Message", message: `From ${data.author}: "${data.message.substring(0, 30)}..."`, type: "message" });
                     await notif.save();
-                    if (userSockets[recipientUserId]) {
-                        io.to(userSockets[recipientUserId]).emit('new_notification', notif);
-                    }
+                    if (userSockets[recipientUserId]) io.to(userSockets[recipientUserId]).emit('new_notification', notif);
                 }
             }
         } catch (err) { console.error(err); }
+    });
+
+    // --- NEW: Live Location Broadcasting ---
+    socket.on('live_location_update', (data) => {
+        // Automatically send the GPS coordinates to the other person in the room
+        socket.to(data.room).emit('receive_live_location', data);
     });
 
     socket.on('disconnect', () => {
@@ -136,7 +130,6 @@ app.post('/api/bookings', auth, async (req, res) => {
         const newBooking = new Booking({ userId: req.user.id, clientName: req.user.name, professionalId: req.body.professionalId, professionalName: req.body.professionalName, date: req.body.date, time: req.body.time, address: req.body.address, totalPrice: req.body.totalPrice });
         const savedBooking = await newBooking.save();
 
-        // Notify Professional of New Booking
         const proProfile = await Professional.findById(req.body.professionalId);
         if (proProfile && proProfile.userId) {
             const notif = new Notification({ userId: proProfile.userId, title: "New Booking Request!", message: `${req.user.name} booked you for ${req.body.date}.`, type: "booking" });
@@ -169,7 +162,6 @@ app.patch('/api/admin/bookings/:id/status', auth, async (req, res) => {
         booking.status = req.body.status;
         await booking.save();
 
-        // Notify Client that the Professional accepted/completed the job
         const notif = new Notification({ userId: booking.userId, title: "Booking Update", message: `Your booking with ${booking.professionalName} was marked as ${req.body.status}.`, type: "status" });
         await notif.save();
         if (userSockets[booking.userId]) io.to(userSockets[booking.userId]).emit('new_notification', notif);
@@ -179,18 +171,9 @@ app.patch('/api/admin/bookings/:id/status', auth, async (req, res) => {
 });
 
 app.get('/api/admin/bookings', auth, async (req, res) => { res.json(await Booking.find().sort({ createdAt: -1 })); });
-
 app.get('/api/chat/:bookingId', auth, async (req, res) => { res.json(await Message.find({ bookingId: req.params.bookingId }).sort({ createdAt: 1 })); });
-
-// --- NEW: Notification Endpoints ---
-app.get('/api/notifications', auth, async (req, res) => {
-    res.json(await Notification.find({ userId: req.user.id }).sort({ createdAt: -1 }).limit(30));
-});
-
-app.patch('/api/notifications/read', auth, async (req, res) => {
-    await Notification.updateMany({ userId: req.user.id, isRead: false }, { isRead: true });
-    res.json({ message: "Marked as read" });
-});
+app.get('/api/notifications', auth, async (req, res) => { res.json(await Notification.find({ userId: req.user.id }).sort({ createdAt: -1 }).limit(30)); });
+app.patch('/api/notifications/read', auth, async (req, res) => { await Notification.updateMany({ userId: req.user.id, isRead: false }, { isRead: true }); res.json({ message: "Marked as read" }); });
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
