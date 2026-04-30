@@ -1,4 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext'; // <-- ADD THIS LINE
+
+// Auto-clean the URL to guarantee there are no trailing slashes causing HTML errors
+let rawUrl = import.meta.env.VITE_BACKEND_URL || 'https://service-app-backend-121o.onrender.com';
+const backendUrl = rawUrl.replace(/\/$/, "");
 // Don't include the .js extension in the import string
 import { AuthProvider } from './context/AuthContext';
 
