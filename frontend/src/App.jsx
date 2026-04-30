@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import io from 'socket.io-client'; // --- NEW: Socket.io Client ---
+import io from 'socket.io-client';
 
 let rawUrl = import.meta.env.VITE_BACKEND_URL || 'https://servly-app-icy0.onrender.com';
 const backendUrl = rawUrl.replace(/\/$/, "");
 
-// Initialize socket outside the component so it doesn't reconnect constantly
 const socket = io(backendUrl);
 
 // ==========================================
@@ -81,11 +80,12 @@ const MainApp = () => {
   const [isBookingSuccess, setIsBookingSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- NEW: CHAT STATE ---
+  // --- CHAT STATE ---
   const [currentMessage, setCurrentMessage] = useState('');
   const [messageList, setMessageList] = useState([]);
-  const [activeChatRoom, setActiveChatRoom] = useState('general_lobby'); // Default room
-  const chatEndRef = useRef(null); // Used to auto-scroll chat to bottom
+  // activeChatRoom now holds the full booking object so we know the Pro's name
+  const [activeChatRoom, setActiveChatRoom] = useState(null); 
+  const chatEndRef = useRef(null);
 
   const fetchProfessionals = () => {
     fetch(`${backendUrl}/api/professionals`)
@@ -96,20 +96,16 @@ const MainApp = () => {
 
   useEffect(() => { fetchProfessionals(); }, []);
 
-  // --- NEW: CHAT EFFECT ---
+  // Handle incoming socket messages
   useEffect(() => {
-      // Listen for incoming messages from the server
-      socket.on('receive_message', (data) => {
+      const receiveMessageHandler = (data) => {
           setMessageList((list) => [...list, data]);
-      });
-      // Clean up listener
-      return () => socket.off('receive_message');
+      };
+      socket.on('receive_message', receiveMessageHandler);
+      return () => socket.off('receive_message', receiveMessageHandler);
   }, []);
 
-  // Auto-scroll to bottom of chat when new message arrives
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messageList, activeTab]);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messageList, activeTab]);
 
   useEffect(() => {
     if (activeTab === 'bookings') {
@@ -126,9 +122,10 @@ const MainApp = () => {
         .then(data => { setAdminBookings(data); setLoadingAdmin(false); })
         .catch(() => setLoadingAdmin(false));
     }
-    if (activeTab === 'chat') {
-        // Join the default chat room when opening the chat tab
-        socket.emit('join_room', activeChatRoom);
+    
+    // Join specific room when chat opens
+    if (activeTab === 'chat' && activeChatRoom) {
+        socket.emit('join_room', activeChatRoom._id);
     }
   }, [activeTab, adminTab, logout, activeChatRoom]);
 
@@ -160,18 +157,24 @@ const MainApp = () => {
       } catch (err) { console.error(err); } finally { setIsAddingPro(false); }
   };
 
-  // --- NEW: SEND MESSAGE FUNCTION ---
+  // Open a private chat room
+  const openPrivateChat = (booking) => {
+      setActiveChatRoom(booking);
+      setMessageList([]); // Clear previous chat history for UI
+      setActiveTab('chat');
+  };
+
   const sendMessage = async () => {
-      if (currentMessage !== "") {
+      if (currentMessage !== "" && activeChatRoom) {
           const messageData = {
-              room: activeChatRoom,
+              room: activeChatRoom._id, // Send to this exact booking ID room
               author: user.name,
               message: currentMessage,
               time: new Date(Date.now()).getHours() + ":" + new Date(Date.now()).getMinutes()
           };
           await socket.emit('send_message', messageData);
-          setMessageList((list) => [...list, messageData]); // Add to own screen instantly
-          setCurrentMessage(""); // Clear input
+          setMessageList((list) => [...list, messageData]); 
+          setCurrentMessage(""); 
       }
   };
 
@@ -258,8 +261,15 @@ const MainApp = () => {
                       <div className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase ${statusColor}`}>{booking.status}</div>
                     </div>
                     <div className="pl-2">
-                      <p className="text-sm text-gray-600 mb-2"><i className="far fa-calendar-alt w-6 text-teal-600 text-center"></i>{new Date(booking.date).toLocaleDateString()} at {booking.time}</p>
-                      {booking.status === 'pending' && <button onClick={() => handleCancelBooking(booking._id)} className="mt-2 w-full py-2 bg-red-50 text-red-500 text-xs font-bold rounded-xl hover:bg-red-100">Cancel Booking</button>}
+                      <p className="text-sm text-gray-600 mb-4"><i className="far fa-calendar-alt w-6 text-teal-600 text-center"></i>{new Date(booking.date).toLocaleDateString()} at {booking.time}</p>
+                      
+                      {/* Actions row: Cancel and Chat */}
+                      {booking.status !== 'cancelled' && (
+                          <div className="flex gap-2">
+                              {booking.status === 'pending' && <button onClick={() => handleCancelBooking(booking._id)} className="flex-1 py-2 bg-red-50 text-red-500 text-xs font-bold rounded-xl hover:bg-red-100">Cancel</button>}
+                              <button onClick={() => openPrivateChat(booking)} className="flex-1 py-2 bg-teal-50 text-teal-600 text-xs font-bold rounded-xl hover:bg-teal-100"><i className="far fa-comment-dots mr-1"></i> Message Pro</button>
+                          </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -267,58 +277,62 @@ const MainApp = () => {
           </div>
         )}
 
-        {/* --- NEW: CHAT TAB --- */}
+        {/* --- CHAT TAB --- */}
         {activeTab === 'chat' && (
-          <div className="flex-1 flex flex-col bg-gray-50 pb-20 relative">
-             <div className="px-6 pt-10 pb-4 bg-white border-b border-gray-100 shadow-sm z-10 sticky top-0">
-                <h2 className="text-2xl font-bold text-primary">Support Chat</h2>
-                <p className="text-xs text-teal-600 font-bold mt-1"><i className="fas fa-circle text-[8px] mr-1"></i> Live in Platform Lobby</p>
-             </div>
-             
-             {/* Chat Messages Container */}
-             <div className="flex-1 overflow-y-auto px-4 py-6 flex flex-col gap-4">
-                 {messageList.length === 0 ? (
-                     <div className="text-center text-gray-400 mt-10">
-                        <i className="far fa-comments text-4xl mb-3 opacity-50"></i>
-                        <p>No messages here yet.</p>
-                        <p className="text-xs mt-1">Say hello to platform support or professionals!</p>
-                     </div>
-                 ) : (
-                     messageList.map((msg, index) => {
-                         const isMe = msg.author === user.name;
-                         return (
-                             <div key={index} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                                <div className={`px-4 py-3 rounded-2xl max-w-[80%] ${isMe ? 'bg-teal-600 text-white rounded-br-none shadow-md' : 'bg-white border border-gray-100 text-gray-800 rounded-bl-none shadow-sm'}`}>
-                                    <p className="text-sm">{msg.message}</p>
-                                </div>
-                                <div className="flex gap-2 mt-1 text-[10px] text-gray-400 font-medium px-1">
-                                    <span>{msg.time}</span>
-                                    <span>•</span>
-                                    <span>{msg.author}</span>
-                                </div>
-                             </div>
-                         );
-                     })
-                 )}
-                 <div ref={chatEndRef} />
-             </div>
+          <div className="flex-1 flex flex-col bg-gray-50 pb-20 relative animate-[slideLeft_0.3s_ease-out] z-30">
+             {activeChatRoom ? (
+                 <>
+                    <div className="px-6 pt-10 pb-4 bg-white border-b border-gray-100 shadow-sm z-10 sticky top-0 flex items-center">
+                        <button onClick={() => setActiveTab('bookings')} className="mr-4 text-gray-400 hover:text-teal-600"><i className="fas fa-chevron-left text-xl"></i></button>
+                        <div>
+                            <h2 className="text-lg font-bold text-primary">{activeChatRoom.professionalName}</h2>
+                            <p className="text-xs text-teal-600 font-medium mt-0.5"><i className="fas fa-lock text-[8px] mr-1"></i> Private Booking Room</p>
+                        </div>
+                    </div>
+                    
+                    <div className="flex-1 overflow-y-auto px-4 py-6 flex flex-col gap-4">
+                        {messageList.length === 0 ? (
+                            <div className="text-center text-gray-400 mt-10">
+                                <i className="far fa-comments text-4xl mb-3 opacity-50"></i>
+                                <p>No messages here yet.</p>
+                                <p className="text-xs mt-1">Send a message to {activeChatRoom.professionalName} regarding your booking.</p>
+                            </div>
+                        ) : (
+                            messageList.map((msg, index) => {
+                                const isMe = msg.author === user.name;
+                                return (
+                                    <div key={index} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                                        <div className={`px-4 py-3 rounded-2xl max-w-[80%] ${isMe ? 'bg-teal-600 text-white rounded-br-none shadow-md' : 'bg-white border border-gray-100 text-gray-800 rounded-bl-none shadow-sm'}`}>
+                                            <p className="text-sm">{msg.message}</p>
+                                        </div>
+                                        <div className="flex gap-2 mt-1 text-[10px] text-gray-400 font-medium px-1">
+                                            <span>{msg.time}</span>
+                                            <span>•</span>
+                                            <span>{msg.author}</span>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                        <div ref={chatEndRef} />
+                    </div>
 
-             {/* Message Input Box */}
-             <div className="absolute bottom-[72px] left-0 w-full bg-white border-t border-gray-100 p-4">
-                 <div className="flex items-center gap-3">
-                     <input 
-                        type="text" 
-                        value={currentMessage} 
-                        onChange={(e) => setCurrentMessage(e.target.value)} 
-                        onKeyPress={(e) => { e.key === "Enter" && sendMessage(); }}
-                        placeholder="Type a message..." 
-                        className="flex-1 bg-gray-100 p-3 rounded-xl text-sm outline-none focus:ring-2 focus:ring-teal-600"
-                     />
-                     <button onClick={sendMessage} className="bg-teal-600 text-white w-12 h-12 rounded-xl flex items-center justify-center hover:bg-teal-700 transition shadow-md">
-                         <i className="fas fa-paper-plane"></i>
-                     </button>
+                    <div className="absolute bottom-[72px] left-0 w-full bg-white border-t border-gray-100 p-4">
+                        <div className="flex items-center gap-3">
+                            <input type="text" value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} onKeyPress={(e) => { e.key === "Enter" && sendMessage(); }} placeholder="Type a message..." className="flex-1 bg-gray-100 p-3 rounded-xl text-sm outline-none focus:ring-2 focus:ring-teal-600" />
+                            <button onClick={sendMessage} className="bg-teal-600 text-white w-12 h-12 rounded-xl flex items-center justify-center hover:bg-teal-700 transition shadow-md"><i className="fas fa-paper-plane"></i></button>
+                        </div>
+                    </div>
+                 </>
+             ) : (
+                 // If user clicks the raw Chat icon from nav without selecting a booking
+                 <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+                     <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4"><i className="far fa-comment-dots text-3xl text-gray-400"></i></div>
+                     <h2 className="text-xl font-bold text-primary mb-2">No Active Chat</h2>
+                     <p className="text-gray-500 text-sm mb-6">Select a booking to start messaging the professional.</p>
+                     <button onClick={() => setActiveTab('bookings')} className="bg-teal-600 text-white font-bold px-6 py-3 rounded-xl">Go to My Bookings</button>
                  </div>
-             </div>
+             )}
           </div>
         )}
 
