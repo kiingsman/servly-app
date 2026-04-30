@@ -10,8 +10,77 @@ const { Server } = require('socket.io');
 const auth = require('./middleware/auth');
 const User = require('./models/User'); 
 const Booking = require('./models/Booking');
-const Professional = require('./models/Professional');
 const Notification = require('./models/Notification'); 
+
+// ==========================================
+// UPDATED PROFESSIONAL SCHEMA (LinkedIn Style)
+// ==========================================
+const professionalSchema = new mongoose.Schema({
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    
+    // 1. Photo & Banner
+    avatar: { type: String, default: 'https://ui-avatars.com/api/?name=Pro&background=0D8ABC&color=fff' },
+    banner: { type: String, default: 'https://images.unsplash.com/photo-1557683316-973673baf926?auto=format&fit=crop&w=800&q=80' },
+    
+    // 2. Core Identity & Headline
+    name: { type: String, required: true },
+    category: { type: String, required: true },
+    price: { type: Number, required: true },
+    title: { type: String, required: true }, // e.g. "Cloud Engineer"
+    headline: { type: String, default: 'Professional Service Provider' }, // e.g. "Cloud Engineer | AWS | Building Scalable Systems"
+    
+    // 3. About
+    about: { type: String, default: 'Experienced professional dedicated to delivering top-quality results.' },
+    
+    // Arrays for complex data (Experience, Education, Projects)
+    // 4. Experience
+    experience: [{
+        jobTitle: String,
+        company: String,
+        startDate: String,
+        endDate: String,
+        description: String
+    }],
+    
+    // 5. Skills
+    skills: [{ type: String }],
+    
+    // 6 & 7. Education & Certifications
+    education: [{
+        school: String,
+        degree: String,
+        year: String
+    }],
+    certifications: [{
+        name: String,
+        issuer: String,
+        year: String
+    }],
+    
+    // 8. Projects
+    projects: [{
+        title: String,
+        description: String,
+        link: String
+    }],
+    
+    // 11. Contact Info & Socials
+    contactInfo: {
+        portfolio: String,
+        github: String,
+        linkedin: String,
+        website: String
+    },
+
+    // Marketplace Stats
+    rating: { type: Number, default: 5.0 },
+    distance: { type: String, default: "1.0 km away" },
+    verified: { type: Boolean, default: false },
+    createdAt: { type: Date, default: Date.now }
+});
+
+// Avoid OverwriteModelError if it already exists
+const Professional = mongoose.models.Professional || mongoose.model('Professional', professionalSchema);
 
 const messageSchema = new mongoose.Schema({
     bookingId: { type: String, required: true },
@@ -20,7 +89,7 @@ const messageSchema = new mongoose.Schema({
     time: { type: String, required: true },
     createdAt: { type: Date, default: Date.now }
 });
-const Message = mongoose.model('Message', messageSchema);
+const Message = mongoose.models.Message || mongoose.model('Message', messageSchema);
 
 const app = express();
 const server = http.createServer(app);
@@ -33,7 +102,7 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/servly', { 
 .then(() => console.log('✅ MongoDB Connected!'))
 .catch(err => console.log('❌ MongoDB Error:', err));
 
-app.get('/', (req, res) => res.send('Servly API with Live Tracking & Video Calls!'));
+app.get('/', (req, res) => res.send('Servly API with Advanced Professional Profiles!'));
 
 // ==========================================
 // SOCKET.IO LOGIC
@@ -44,7 +113,6 @@ io.on('connection', (socket) => {
     socket.on('register_user', (userId) => { userSockets[userId] = socket.id; });
     socket.on('join_room', (room) => socket.join(room));
     
-    // Chat & Notifications
     socket.on('send_message', async (data) => {
         try {
             await new Message({ bookingId: data.room, author: data.author, message: data.message, time: data.time }).save();
@@ -66,8 +134,6 @@ io.on('connection', (socket) => {
     });
 
     socket.on('live_location_update', (data) => socket.to(data.room).emit('receive_live_location', data));
-
-    // --- NEW: WEBRTC VIDEO CALL SIGNALING ---
     socket.on('call_user', (data) => socket.to(data.room).emit('incoming_call', data));
     socket.on('accept_call', (data) => socket.to(data.room).emit('call_accepted', data));
     socket.on('ice_candidate', (data) => socket.to(data.room).emit('ice_candidate', data));
@@ -80,7 +146,9 @@ io.on('connection', (socket) => {
     });
 });
 
-// Auth Routes
+// ==========================================
+// AUTHENTICATION ROUTES
+// ==========================================
 app.post('/api/signup', async (req, res) => {
     try {
         const { name, email, password } = req.body;
@@ -90,16 +158,33 @@ app.post('/api/signup', async (req, res) => {
         res.status(201).json({ token, user: { id: newUser._id, name: newUser.name, email: newUser.email, role: newUser.role } });
     } catch (error) { res.status(500).json({ message: 'Server error' }); }
 });
+
 app.post('/api/pro-signup', async (req, res) => {
     try {
         const { name, email, password, title, category, price } = req.body;
         if (await User.findOne({ email })) return res.status(400).json({ message: 'Email in use' });
         const newUser = await new User({ name, email, password: await bcrypt.hash(password, await bcrypt.genSalt(10)), role: 'professional' }).save();
-        const newPro = await new Professional({ userId: newUser._id, name, title, category, price: Number(price), avatar: `https://ui-avatars.com/api/?name=${name.replace(' ', '+')}&background=0D8ABC&color=fff`, rating: 5.0, distance: "1.0 km away", verified: true }).save();
+        
+        // Initialize Professional with default advanced fields
+        const newPro = await new Professional({ 
+            userId: newUser._id, 
+            name, 
+            title, 
+            headline: `${title} | Professional Services`,
+            category, 
+            price: Number(price), 
+            avatar: `https://ui-avatars.com/api/?name=${name.replace(' ', '+')}&background=0D8ABC&color=fff`, 
+            skills: [category], // Default skill based on category
+            rating: 5.0, 
+            distance: "1.0 km away", 
+            verified: true 
+        }).save();
+        
         const token = jwt.sign({ userId: newUser._id, name: newUser.name, role: newUser.role, proId: newPro._id }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
         res.status(201).json({ token, user: { id: newUser._id, name: newUser.name, email: newUser.email, role: newUser.role, proId: newPro._id } });
     } catch (error) { res.status(500).json({ message: 'Server error' }); }
 });
+
 app.post('/api/login', async (req, res) => {
     try {
         const user = await User.findOne({ email: req.body.email });
@@ -114,8 +199,23 @@ app.post('/api/login', async (req, res) => {
     } catch (error) { res.status(500).json({ message: 'Server error' }); }
 });
 
-// Main Routes
+// ==========================================
+// MAIN ROUTES
+// ==========================================
 app.get('/api/professionals', async (req, res) => { res.json(await Professional.find().sort({ createdAt: -1 })); });
+
+// --- NEW: Route to update Pro Profile ---
+app.put('/api/pro/profile', auth, async (req, res) => {
+    try {
+        const updatedPro = await Professional.findOneAndUpdate(
+            { userId: req.user.id },
+            { $set: req.body },
+            { new: true }
+        );
+        res.json(updatedPro);
+    } catch (error) { res.status(500).json({ message: 'Error updating profile' }); }
+});
+
 app.post('/api/bookings', auth, async (req, res) => {
     try {
         const newBooking = new Booking({ userId: req.user.id, clientName: req.user.name, professionalId: req.body.professionalId, professionalName: req.body.professionalName, date: req.body.date, time: req.body.time, address: req.body.address, totalPrice: req.body.totalPrice });
@@ -129,6 +229,7 @@ app.post('/api/bookings', auth, async (req, res) => {
         res.status(201).json(savedBooking);
     } catch (error) { res.status(500).json({ message: 'Error' }); }
 });
+
 app.get('/api/bookings', auth, async (req, res) => { res.json(await Booking.find({ userId: req.user.id }).sort({ createdAt: -1 })); });
 app.get('/api/pro/bookings', auth, async (req, res) => {
     try {
@@ -137,11 +238,13 @@ app.get('/api/pro/bookings', auth, async (req, res) => {
         res.json(await Booking.find({ professionalId: proProfile._id }).sort({ createdAt: -1 }));
     } catch (error) { res.status(500).json({ message: 'Error' }); }
 });
+
 app.patch('/api/bookings/:id/cancel', auth, async (req, res) => {
     const booking = await Booking.findById(req.params.id);
     booking.status = 'cancelled';
     res.json(await booking.save());
 });
+
 app.patch('/api/admin/bookings/:id/status', auth, async (req, res) => {
     try {
         const booking = await Booking.findById(req.params.id);
