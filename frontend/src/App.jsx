@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import io from 'socket.io-client';
 
-// --- NEW: Map Imports ---
+// Map Imports
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -276,7 +276,7 @@ const ClientApp = () => {
                 {isBookingSuccess ? (
                     <div className="flex-1 flex flex-col items-center justify-center p-6"><h2 className="text-2xl font-bold mb-2">Booking Confirmed!</h2><button onClick={() => { setBookingPro(null); setIsBookingSuccess(false); setActiveTab('bookings'); }} className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl mt-8">View Bookings</button></div>
                 ) : (
-                    <form onSubmit={handleBookingSubmit} className="flex-1 p-6 flex flex-col"><input type="date" required className="w-full bg-gray-50 p-4 rounded-xl mb-6" value={bookingData.date} onChange={e => setBookingData({...bookingData, date: e.target.value})} /><div className="grid grid-cols-3 gap-3 mb-6">{['10:00 AM', '1:00 PM', '4:00 PM'].map(time => <div key={time} onClick={() => setBookingData({...bookingData, time})} className={`text-center py-3 rounded-xl text-sm font-medium cursor-pointer ${bookingData.time === time ? 'bg-teal-600 text-white' : 'bg-gray-50'}`}>{time}</div>)}</div><textarea required className="w-full bg-gray-50 p-4 rounded-xl mb-6 h-28" value={bookingData.address} onChange={e => setBookingData({...bookingData, address: e.target.value})} placeholder="Full Address"></textarea><button type="submit" className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl mt-auto">Confirm Booking</button></form>
+                    <form onSubmit={handleBookingSubmit} className="flex-1 p-6 flex flex-col"><input type="date" required className="w-full bg-gray-50 p-4 rounded-xl mb-6" value={bookingData.date} onChange={e => setBookingData({...bookingData, date: e.target.value})} /><div className="grid grid-cols-3 gap-3 mb-6">{['10:00 AM', '1:00 PM', '4:00 PM'].map(time => <div key={time} onClick={() => setBookingData({...bookingData, time})} className={`text-center py-3 rounded-xl text-sm font-medium cursor-pointer ${bookingData.time === time ? 'bg-teal-600 text-white' : 'bg-gray-50'}`}>{time}</div>)}</div><textarea required className="w-full bg-gray-50 p-4 rounded-xl mb-6 h-28" value={bookingData.address} onChange={e => setBookingData({...bookingData, address: e.target.value})} placeholder="E.g. Zoo Road, Kano"></textarea><button type="submit" className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl mt-auto">Confirm Booking</button></form>
                 )}
             </div>
         )}
@@ -297,7 +297,7 @@ const ClientApp = () => {
 };
 
 // ==========================================
-// PROFESSIONAL DASHBOARD (WITH MAP)
+// PROFESSIONAL DASHBOARD (WITH DYNAMIC MAP)
 // ==========================================
 const ProfessionalApp = () => {
     const { user, logout } = useAuth();
@@ -309,11 +309,10 @@ const ProfessionalApp = () => {
     const [currentMessage, setCurrentMessage] = useState('');
     const chatEndRef = useRef(null);
 
-    // --- NEW: Map State ---
+    // --- GEOCODING MAP STATE ---
     const [viewingMapForJob, setViewingMapForJob] = useState(null);
-
-    // Mock coordinates for Kano (In a real app, geocode the address string to get exact lat/lng)
-    const kanoPosition = [11.9964, 8.5167];
+    const [mapPosition, setMapPosition] = useState([11.9964, 8.5167]); // Default: Kano
+    const [isMapLoading, setIsMapLoading] = useState(false);
 
     useEffect(() => {
         fetch(`${backendUrl}/api/pro/bookings`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } })
@@ -344,6 +343,34 @@ const ProfessionalApp = () => {
         if (res.ok) setJobs(prev => prev.map(j => j._id === jobId ? { ...j, status } : j));
     };
 
+    // --- NEW: Handle Geocoding ---
+    const handleViewMap = async (job) => {
+        setViewingMapForJob(job);
+        setIsMapLoading(true);
+        
+        try {
+            // Add 'Kano, Nigeria' to the search query if it's not already in the address text
+            // This helps the OpenStreetMap API find local streets better.
+            const searchQuery = job.address.toLowerCase().includes('kano') ? job.address : `${job.address}, Kano, Nigeria`;
+            
+            // Call the free Nominatim Geocoding API
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
+            const data = await res.json();
+            
+            if (data && data.length > 0) {
+                // Success! Set the map to the found coordinates
+                setMapPosition([parseFloat(data[0].lat), parseFloat(data[0].lon)]);
+            } else {
+                // Fallback if address is too confusing for the API
+                setMapPosition([11.9964, 8.5167]); 
+            }
+        } catch (err) {
+            setMapPosition([11.9964, 8.5167]);
+        } finally {
+            setIsMapLoading(false);
+        }
+    };
+
     return (
         <div className="bg-gray-900 w-full max-w-md mx-auto h-screen md:h-[850px] relative flex flex-col text-white md:rounded-[2.5rem] md:shadow-2xl">
             {activeTab === 'jobs' && (
@@ -356,10 +383,9 @@ const ProfessionalApp = () => {
                             <div className="flex justify-between mb-3 border-b border-gray-700 pb-3"><h3 className="font-bold">{job.clientName}</h3><div className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-gray-700">{job.status}</div></div>
                             <p className="text-sm text-gray-300 mb-2"><i className="far fa-calendar-alt text-teal-400 mr-2"></i>{new Date(job.date).toLocaleDateString()} at {job.time}</p>
                             
-                            {/* Updated Address with Map Button */}
                             <div className="flex justify-between items-center mb-4">
                                 <p className="text-sm text-gray-300"><i className="fas fa-map-marker-alt text-teal-400 mr-2"></i>{job.address.substring(0, 20)}...</p>
-                                <button onClick={() => setViewingMapForJob(job)} className="bg-gray-700 text-teal-400 px-3 py-1 rounded text-xs font-bold"><i className="fas fa-map mr-1"></i>View Map</button>
+                                <button onClick={() => handleViewMap(job)} className="bg-gray-700 text-teal-400 px-3 py-1 rounded text-xs font-bold shadow-md hover:bg-gray-600 transition"><i className="fas fa-map mr-1"></i>View Map</button>
                             </div>
                             
                             <div className="flex gap-2 mt-4">
@@ -403,20 +429,26 @@ const ProfessionalApp = () => {
                          </div>
                          <button onClick={() => setViewingMapForJob(null)} className="h-10 w-10 rounded-full bg-gray-800 text-gray-400"><i className="fas fa-times"></i></button>
                      </div>
-                     <div className="flex-1 w-full bg-gray-800 relative">
-                         {/* Leaflet Map Component */}
-                         <MapContainer center={kanoPosition} zoom={13} style={{ height: '100%', width: '100%', zIndex: 1 }}>
-                             <TileLayer
-                                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                             />
-                             <Marker position={kanoPosition}>
-                                 <Popup>
-                                     <strong>{viewingMapForJob.clientName}'s Location</strong><br/>
-                                     {viewingMapForJob.address}
-                                 </Popup>
-                             </Marker>
-                         </MapContainer>
+                     <div className="flex-1 w-full bg-gray-800 relative flex items-center justify-center">
+                         {isMapLoading ? (
+                             <div className="text-center">
+                                 <i className="fas fa-spinner fa-spin text-teal-400 text-4xl mb-4"></i>
+                                 <p className="text-gray-400 text-sm font-medium">Locating address...</p>
+                             </div>
+                         ) : (
+                             <MapContainer key={`${mapPosition[0]}-${mapPosition[1]}`} center={mapPosition} zoom={15} style={{ height: '100%', width: '100%', zIndex: 1 }}>
+                                 <TileLayer
+                                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                 />
+                                 <Marker position={mapPosition}>
+                                     <Popup>
+                                         <strong>{viewingMapForJob.clientName}'s Location</strong><br/>
+                                         {viewingMapForJob.address}
+                                     </Popup>
+                                 </Marker>
+                             </MapContainer>
+                         )}
                      </div>
                      <div className="p-6 bg-gray-900 border-t border-gray-800 text-center">
                          <p className="text-sm text-gray-400 mb-4">{viewingMapForJob.address}</p>
