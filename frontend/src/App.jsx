@@ -20,7 +20,6 @@ const AuthScreen = () => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
-
     const endpoint = isLogin ? '/api/login' : '/api/signup';
     const payload = isLogin ? { email, password } : { name, email, password };
 
@@ -30,7 +29,6 @@ const AuthScreen = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      
       const contentType = res.headers.get('content-type') || '';
       const isJson = contentType.includes('application/json');
       const data = isJson ? await res.json() : await res.text();
@@ -49,9 +47,7 @@ const AuthScreen = () => {
   return (
     <div className="bg-bgLight w-full max-w-md mx-auto h-screen md:h-[850px] md:rounded-[2.5rem] md:shadow-2xl relative overflow-hidden md:border-8 md:border-gray-900 flex flex-col justify-center px-8">
       <div className="text-center mb-10">
-        <div className="w-16 h-16 bg-teal-600 rounded-2xl mx-auto mb-4 flex items-center justify-center shadow-lg shadow-teal-600/30">
-            <i className="fas fa-tools text-white text-3xl"></i>
-        </div>
+        <div className="w-16 h-16 bg-teal-600 rounded-2xl mx-auto mb-4 flex items-center justify-center shadow-lg shadow-teal-600/30"><i className="fas fa-tools text-white text-3xl"></i></div>
         <h1 className="text-4xl font-bold text-primary mb-2">Servly</h1>
         <p className="text-gray-500 font-medium">Your City's Premium Marketplace</p>
       </div>
@@ -59,33 +55,14 @@ const AuthScreen = () => {
       <form onSubmit={handleSubmit} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
         <h2 className="text-xl font-bold text-primary mb-6">{isLogin ? 'Welcome Back' : 'Create an Account'}</h2>
         {error && <div className="bg-red-50 text-red-500 p-3 rounded-xl text-sm mb-4">{error}</div>}
-
         {!isLogin && (
-          <div className="mb-4">
-            <label className="text-xs font-bold text-primary ml-1">Full Name</label>
-            <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl mt-1 outline-none focus:ring-2 focus:ring-teal-600 text-sm" placeholder="John Doe" />
-          </div>
+          <div className="mb-4"><label className="text-xs font-bold text-primary ml-1">Full Name</label><input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl mt-1 outline-none focus:ring-2 focus:ring-teal-600 text-sm" placeholder="John Doe" /></div>
         )}
-        <div className="mb-4">
-          <label className="text-xs font-bold text-primary ml-1">Email Address</label>
-          <input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl mt-1 outline-none focus:ring-2 focus:ring-teal-600 text-sm" placeholder="john@example.com" />
-        </div>
-        <div className="mb-6">
-          <label className="text-xs font-bold text-primary ml-1">Password</label>
-          <input type="password" required value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl mt-1 outline-none focus:ring-2 focus:ring-teal-600 text-sm" placeholder="••••••••" />
-        </div>
-
-        <button type="submit" disabled={isLoading} className="w-full bg-teal-600 text-white font-bold py-3.5 rounded-xl hover:bg-teal-700 transition shadow-md disabled:opacity-50">
-          {isLoading ? 'Please wait...' : (isLogin ? 'Log In' : 'Sign Up')}
-        </button>
+        <div className="mb-4"><label className="text-xs font-bold text-primary ml-1">Email Address</label><input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl mt-1 outline-none focus:ring-2 focus:ring-teal-600 text-sm" placeholder="john@example.com" /></div>
+        <div className="mb-6"><label className="text-xs font-bold text-primary ml-1">Password</label><input type="password" required value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl mt-1 outline-none focus:ring-2 focus:ring-teal-600 text-sm" placeholder="••••••••" /></div>
+        <button type="submit" disabled={isLoading} className="w-full bg-teal-600 text-white font-bold py-3.5 rounded-xl hover:bg-teal-700 transition shadow-md disabled:opacity-50">{isLoading ? 'Please wait...' : (isLogin ? 'Log In' : 'Sign Up')}</button>
       </form>
-
-      <p className="text-center text-sm text-gray-500 mt-8">
-        {isLogin ? "Don't have an account?" : "Already have an account?"}{' '}
-        <span onClick={() => { setIsLogin(!isLogin); setError(''); }} className="text-teal-600 font-bold cursor-pointer hover:underline">
-          {isLogin ? 'Sign Up' : 'Log In'}
-        </span>
-      </p>
+      <p className="text-center text-sm text-gray-500 mt-8">{isLogin ? "Don't have an account?" : "Already have an account?"} <span onClick={() => { setIsLogin(!isLogin); setError(''); }} className="text-teal-600 font-bold cursor-pointer hover:underline">{isLogin ? 'Sign Up' : 'Log In'}</span></p>
     </div>
   );
 };
@@ -105,13 +82,17 @@ const MainApp = () => {
   const [myBookings, setMyBookings] = useState([]);
   const [loadingBookings, setLoadingBookings] = useState(false);
 
+  // Admin State
+  const [adminBookings, setAdminBookings] = useState([]);
+  const [loadingAdmin, setLoadingAdmin] = useState(false);
+
   const [viewingProfile, setViewingProfile] = useState(null);
   const [bookingPro, setBookingPro] = useState(null);
   const [bookingData, setBookingData] = useState({ date: '', time: '10:00 AM', address: '' });
   const [isBookingSuccess, setIsBookingSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch all professionals
+  // Fetch professionals
   useEffect(() => {
     fetch(`${backendUrl}/api/professionals`)
       .then(res => res.json())
@@ -119,19 +100,22 @@ const MainApp = () => {
       .catch(err => { console.error(err); setLoadingPros(false); });
   }, []);
 
-  // Fetch user's bookings
+  // Fetch user bookings OR Admin bookings depending on tab
   useEffect(() => {
     if (activeTab === 'bookings') {
       setLoadingBookings(true);
-      fetch(`${backendUrl}/api/bookings`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }
-      })
-        .then(res => {
-            if (res.status === 401) { logout(); throw new Error("Session expired."); }
-            return res.json();
-        })
+      fetch(`${backendUrl}/api/bookings`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } })
+        .then(res => { if (res.status === 401) { logout(); throw new Error("Expired."); } return res.json(); })
         .then(data => { setMyBookings(data); setLoadingBookings(false); })
-        .catch(err => { console.error(err); setLoadingBookings(false); });
+        .catch(() => setLoadingBookings(false));
+    }
+
+    if (activeTab === 'admin') {
+      setLoadingAdmin(true);
+      fetch(`${backendUrl}/api/admin/bookings`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } })
+        .then(res => res.json())
+        .then(data => { setAdminBookings(data); setLoadingAdmin(false); })
+        .catch(() => setLoadingAdmin(false));
     }
   }, [activeTab, logout]);
 
@@ -139,12 +123,7 @@ const MainApp = () => {
   const handleBookingSubmit = (e) => {
     e.preventDefault();
     setIsSubmitting(true);
-    const payload = {
-      professionalId: bookingPro._id || bookingPro.id,
-      professionalName: bookingPro.name,
-      date: bookingData.date, time: bookingData.time, address: bookingData.address,
-      totalPrice: bookingPro.price
-    };
+    const payload = { professionalId: bookingPro._id || bookingPro.id, professionalName: bookingPro.name, date: bookingData.date, time: bookingData.time, address: bookingData.address, totalPrice: bookingPro.price };
 
     fetch(`${backendUrl}/api/bookings`, {
       method: 'POST',
@@ -152,34 +131,33 @@ const MainApp = () => {
       body: JSON.stringify(payload)
     })
     .then(res => res.json())
-    .then(() => {
-      setIsSubmitting(false); setIsBookingSuccess(true);
-      if (activeTab === 'bookings') setActiveTab('home'); 
-    })
-    .catch(err => { console.error(err); setIsSubmitting(false); });
+    .then(() => { setIsSubmitting(false); setIsBookingSuccess(true); if (activeTab === 'bookings') setActiveTab('home'); })
+    .catch(() => setIsSubmitting(false));
   };
 
-  // Cancel booking function
+  // Cancel booking
   const handleCancelBooking = async (bookingId) => {
-    if (!window.confirm("Are you sure you want to cancel this booking?")) return;
-
+    if (!window.confirm("Cancel this booking?")) return;
     try {
-      const res = await fetch(`${backendUrl}/api/bookings/${bookingId}/cancel`, {
-        method: 'PATCH',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }
-      });
+      const res = await fetch(`${backendUrl}/api/bookings/${bookingId}/cancel`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } });
+      if (res.ok) setMyBookings(prev => prev.map(b => b._id === bookingId ? { ...b, status: 'cancelled' } : b));
+    } catch (err) { console.error(err); }
+  };
 
-      if (res.ok) {
-        setMyBookings(prevBookings => 
-          prevBookings.map(b => b._id === bookingId ? { ...b, status: 'cancelled' } : b)
-        );
-      } else {
-        const data = await res.json();
-        alert(data.message || 'Failed to cancel booking');
-      }
+  // ADMIN: Change booking status
+  const handleAdminStatusUpdate = async (bookingId, newStatus) => {
+    try {
+        const res = await fetch(`${backendUrl}/api/admin/bookings/${bookingId}/status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` },
+            body: JSON.stringify({ status: newStatus })
+        });
+        if (res.ok) {
+            // Update local admin state to show instant change
+            setAdminBookings(prev => prev.map(b => b._id === bookingId ? { ...b, status: newStatus } : b));
+        }
     } catch (err) {
-      console.error(err);
-      alert('An error occurred while cancelling.');
+        console.error("Failed to update status", err);
     }
   };
 
@@ -213,16 +191,12 @@ const MainApp = () => {
                 <div className="relative flex items-center">
                     <i className="fas fa-search absolute left-4 text-gray-400 z-10"></i>
                     <input type="text" placeholder="What service do you need?" className="w-full bg-gray-100 py-4 pl-12 pr-12 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-teal-600 transition-all relative" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-                    <button className="absolute right-2 bg-primary text-white p-2.5 rounded-xl"><i className="fas fa-sliders-h"></i></button>
                 </div>
             </div>
 
             <div className="flex-1 overflow-y-auto px-6 pt-6 pb-28">
                 <div className="mb-8">
-                    <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-lg font-bold text-primary">Categories</h2>
-                        <span className="text-sm font-medium text-teal-600">See All</span>
-                    </div>
+                    <h2 className="text-lg font-bold text-primary mb-4">Categories</h2>
                     <div className="grid grid-cols-4 gap-4">
                         {categories.map(cat => (
                             <div key={cat.id} onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)} className="flex flex-col items-center cursor-pointer group">
@@ -235,9 +209,7 @@ const MainApp = () => {
 
                 <div>
                     <h2 className="text-lg font-bold text-primary mb-4">{selectedCategory ? `${categories.find(c => c.id === selectedCategory)?.name} Pros` : 'Top Rated Near You'}</h2>
-                    {loadingPros ? (
-                        <div className="text-center py-10"><i className="fas fa-spinner fa-spin text-teal-600 text-3xl"></i></div>
-                    ) : filteredPros.map(pro => (
+                    {loadingPros ? <div className="text-center py-10"><i className="fas fa-spinner fa-spin text-teal-600 text-3xl"></i></div> : filteredPros.map(pro => (
                         <div key={pro._id || pro.id} onClick={() => setViewingProfile(pro)} className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 mb-4 hover:shadow-md transition cursor-pointer">
                             <div className="flex items-center">
                                 <img src={pro.avatar} className="w-16 h-16 rounded-2xl object-cover mr-4" />
@@ -260,7 +232,7 @@ const MainApp = () => {
           </>
         )}
 
-        {/* --- BOOKINGS TAB --- */}
+        {/* --- USER BOOKINGS TAB --- */}
         {activeTab === 'bookings' && (
           <div className="flex-1 overflow-y-auto px-6 pt-10 pb-28 bg-gray-50">
             <h2 className="text-2xl font-bold text-primary mb-6">My Bookings</h2>
@@ -276,6 +248,7 @@ const MainApp = () => {
             ) : myBookings.map(booking => {
                 let statusColor = 'bg-orange-50 text-orange-500';
                 if (booking.status === 'confirmed') statusColor = 'bg-teal-50 text-teal-600';
+                if (booking.status === 'completed') statusColor = 'bg-blue-50 text-blue-600';
                 if (booking.status === 'cancelled') statusColor = 'bg-red-50 text-red-500 line-through opacity-70';
 
                 return (
@@ -291,13 +264,61 @@ const MainApp = () => {
                     <div className="pl-2">
                       <div className="flex items-center text-sm text-gray-600 mb-2"><i className="far fa-calendar-alt w-6 text-teal-600 text-center"></i><span className="font-medium">{new Date(booking.date).toLocaleDateString()} at {booking.time}</span></div>
                       <div className="flex items-start text-sm text-gray-600 mb-4"><i className="fas fa-map-marker-alt w-6 text-teal-600 text-center mt-1"></i><span className="flex-1">{booking.address}</span></div>
-                      
                       {booking.status === 'pending' && (
-                          <button onClick={() => handleCancelBooking(booking._id)} className="mt-2 w-full py-2 bg-red-50 text-red-500 text-xs font-bold rounded-xl hover:bg-red-100 transition">
-                              <i className="fas fa-times-circle mr-1"></i> Cancel Booking
-                          </button>
+                          <button onClick={() => handleCancelBooking(booking._id)} className="mt-2 w-full py-2 bg-red-50 text-red-500 text-xs font-bold rounded-xl hover:bg-red-100 transition"><i className="fas fa-times-circle mr-1"></i> Cancel Booking</button>
                       )}
                     </div>
+                  </div>
+                );
+            })}
+          </div>
+        )}
+
+        {/* --- ADMIN DASHBOARD TAB (NEW!) --- */}
+        {activeTab === 'admin' && (
+          <div className="flex-1 overflow-y-auto px-6 pt-10 pb-28 bg-gray-900">
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-white"><i className="fas fa-shield-alt mr-2 text-teal-400"></i>Admin Panel</h2>
+                <button onClick={() => setActiveTab('profile')} className="text-gray-400 hover:text-white bg-gray-800 px-3 py-1 rounded-lg text-xs font-bold transition">Close</button>
+            </div>
+            
+            {loadingAdmin ? (
+              <div className="text-center py-20"><i className="fas fa-spinner fa-spin text-teal-400 text-4xl"></i></div>
+            ) : adminBookings.length === 0 ? (
+              <p className="text-gray-400 text-center py-10">No bookings exist on the platform yet.</p>
+            ) : adminBookings.map(booking => {
+                let statusColor = 'bg-orange-500/20 text-orange-400';
+                if (booking.status === 'confirmed') statusColor = 'bg-teal-500/20 text-teal-400';
+                if (booking.status === 'completed') statusColor = 'bg-blue-500/20 text-blue-400';
+                if (booking.status === 'cancelled') statusColor = 'bg-red-500/20 text-red-400 opacity-60';
+
+                return (
+                  <div key={booking._id} className="bg-gray-800 p-5 rounded-2xl mb-4 border border-gray-700">
+                    <div className="flex justify-between items-start mb-3 border-b border-gray-700 pb-3">
+                      <div>
+                        <p className="text-xs text-gray-400 mb-1">Client: <strong className="text-white">{booking.clientName}</strong></p>
+                        <p className="text-xs text-gray-400">Pro: <strong className="text-white">{booking.professionalName}</strong></p>
+                      </div>
+                      <div className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${statusColor}`}>{booking.status}</div>
+                    </div>
+                    
+                    <div className="text-xs text-gray-300 mb-4">
+                        <p><i className="far fa-calendar-alt w-4 text-teal-400 mb-1"></i> {new Date(booking.date).toLocaleDateString()} at {booking.time}</p>
+                        <p><i className="fas fa-map-marker-alt w-4 text-teal-400"></i> {booking.address}</p>
+                    </div>
+
+                    {/* Admin Actions */}
+                    {booking.status !== 'cancelled' && (
+                        <div className="flex gap-2">
+                            {booking.status === 'pending' && (
+                                <button onClick={() => handleAdminStatusUpdate(booking._id, 'confirmed')} className="flex-1 bg-teal-600 hover:bg-teal-500 text-white text-xs py-2 rounded-lg font-bold transition">Confirm</button>
+                            )}
+                            {booking.status === 'confirmed' && (
+                                <button onClick={() => handleAdminStatusUpdate(booking._id, 'completed')} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-xs py-2 rounded-lg font-bold transition">Mark Completed</button>
+                            )}
+                            <button onClick={() => handleAdminStatusUpdate(booking._id, 'cancelled')} className="flex-1 bg-gray-700 hover:bg-red-600 text-white text-xs py-2 rounded-lg font-bold transition">Force Cancel</button>
+                        </div>
+                    )}
                   </div>
                 );
             })}
@@ -308,11 +329,24 @@ const MainApp = () => {
         {activeTab === 'profile' && (
           <div className="flex-1 overflow-y-auto px-6 pt-10 pb-28 bg-gray-50">
             <h2 className="text-2xl font-bold text-primary mb-6">My Account</h2>
+            
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6 text-center">
               <div className="w-24 h-24 bg-teal-100 text-teal-600 rounded-full flex items-center justify-center text-4xl font-bold mx-auto mb-4 border-4 border-white shadow-md">{user?.name?.charAt(0).toUpperCase() || 'G'}</div>
               <h3 className="font-bold text-xl text-primary">{user?.name || 'User'}</h3>
               <p className="text-gray-500 text-sm mb-6">{user?.email || ''}</p>
               <button onClick={logout} className="bg-red-50 text-red-500 font-bold py-3 px-8 rounded-xl hover:bg-red-100 transition w-full">Log Out</button>
+            </div>
+
+            {/* Secret Admin Button */}
+            <div onClick={() => setActiveTab('admin')} className="bg-gray-900 p-4 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-gray-800 transition shadow-lg mt-4">
+                <div className="flex items-center">
+                    <div className="w-10 h-10 bg-gray-800 rounded-xl flex items-center justify-center mr-4"><i className="fas fa-shield-alt text-teal-400"></i></div>
+                    <div>
+                        <h4 className="text-white font-bold text-sm">Admin Dashboard</h4>
+                        <p className="text-gray-400 text-xs">Manage platform bookings</p>
+                    </div>
+                </div>
+                <i className="fas fa-chevron-right text-gray-500 text-sm"></i>
             </div>
           </div>
         )}
@@ -346,9 +380,7 @@ const MainApp = () => {
                         <label className="text-sm font-bold text-primary mb-2">Address</label>
                         <textarea required className="w-full bg-gray-50 border border-gray-200 p-4 rounded-xl mb-6 h-28 outline-none focus:ring-2 focus:ring-teal-600 resize-none" value={bookingData.address} onChange={e => setBookingData({...bookingData, address: e.target.value})}></textarea>
 
-                        <button type="submit" disabled={isSubmitting} className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl mt-auto">
-                            {isSubmitting ? 'Confirming...' : 'Confirm Booking'}
-                        </button>
+                        <button type="submit" disabled={isSubmitting} className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl mt-auto">{isSubmitting ? 'Confirming...' : 'Confirm Booking'}</button>
                     </form>
                 )}
             </div>

@@ -24,8 +24,6 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/servly', {
 })
 .then(async () => {
     console.log('✅ MongoDB Connected Successfully!');
-    
-    // Auto-seed professionals if the database is empty
     const count = await Professional.countDocuments();
     if (count === 0) {
         const initialPros = [
@@ -48,7 +46,6 @@ app.get('/', (req, res) => {
 // ==========================================
 // 4. AUTHENTICATION ROUTES
 // ==========================================
-
 app.post('/api/signup', async (req, res) => {
     try {
         const { name, email, password } = req.body;
@@ -61,15 +58,9 @@ app.post('/api/signup', async (req, res) => {
         const newUser = new User({ name, email, password: hashedPassword });
         const savedUser = await newUser.save();
 
-        const token = jwt.sign(
-            { userId: savedUser._id, name: savedUser.name },
-            process.env.JWT_SECRET || 'fallback_secret',
-            { expiresIn: '7d' }
-        );
-
+        const token = jwt.sign({ userId: savedUser._id, name: savedUser.name }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '7d' });
         res.status(201).json({ token, user: { id: savedUser._id, name: savedUser.name, email: savedUser.email } });
     } catch (error) {
-        console.error("Signup Error:", error);
         res.status(500).json({ message: 'Server error during signup' });
     }
 });
@@ -83,15 +74,9 @@ app.post('/api/login', async (req, res) => {
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
 
-        const token = jwt.sign(
-            { userId: user._id, name: user.name },
-            process.env.JWT_SECRET || 'fallback_secret',
-            { expiresIn: '7d' }
-        );
-
+        const token = jwt.sign({ userId: user._id, name: user.name }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '7d' });
         res.json({ token, user: { id: user._id, name: user.name, email: user.email } });
     } catch (error) {
-        console.error("Login Error:", error);
         res.status(500).json({ message: 'Server error during login' });
     }
 });
@@ -104,73 +89,83 @@ app.get('/api/professionals', async (req, res) => {
         const pros = await Professional.find();
         res.json(pros);
     } catch (error) {
-        console.error("Error fetching professionals:", error);
         res.status(500).json({ message: 'Server error fetching professionals' });
     }
 });
 
 // ==========================================
-// 6. BOOKINGS ROUTES
+// 6. USER BOOKINGS ROUTES
 // ==========================================
-
-// POST a new booking
 app.post('/api/bookings', auth, async (req, res) => {
     try {
         const newBooking = new Booking({
-            userId: req.user.id,
-            clientName: req.user.name, 
-            professionalId: req.body.professionalId,
-            professionalName: req.body.professionalName,
-            date: req.body.date,
-            time: req.body.time,
-            address: req.body.address,
-            totalPrice: req.body.totalPrice
+            userId: req.user.id, clientName: req.user.name, professionalId: req.body.professionalId,
+            professionalName: req.body.professionalName, date: req.body.date, time: req.body.time,
+            address: req.body.address, totalPrice: req.body.totalPrice
         });
-        
         const savedBooking = await newBooking.save();
         res.status(201).json(savedBooking);
     } catch (error) {
-        console.error("Booking Error:", error);
         res.status(500).json({ message: 'Server error saving booking' });
     }
 });
 
-// GET user's bookings
 app.get('/api/bookings', auth, async (req, res) => {
     try {
         const userBookings = await Booking.find({ userId: req.user.id }).sort({ createdAt: -1 });
         res.json(userBookings);
     } catch (error) {
-        console.error("Fetch Bookings Error:", error);
         res.status(500).json({ message: 'Server error fetching bookings' });
     }
 });
 
-// CANCEL a booking (PATCH request)
 app.patch('/api/bookings/:id/cancel', auth, async (req, res) => {
     try {
         const booking = await Booking.findOne({ _id: req.params.id, userId: req.user.id });
-        
-        if (!booking) {
-            return res.status(404).json({ message: 'Booking not found' });
-        }
-
-        if (booking.status !== 'pending') {
-            return res.status(400).json({ message: 'Only pending bookings can be cancelled' });
-        }
+        if (!booking) return res.status(404).json({ message: 'Booking not found' });
+        if (booking.status !== 'pending') return res.status(400).json({ message: 'Only pending bookings can be cancelled' });
 
         booking.status = 'cancelled';
         await booking.save();
-
         res.json({ message: 'Booking cancelled successfully', booking });
     } catch (error) {
-        console.error("Cancel Booking Error:", error);
         res.status(500).json({ message: 'Server error cancelling booking' });
     }
 });
 
-// --- 7. Start Server ---
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
+// ==========================================
+// 7. ADMIN ROUTES (NEW!)
+// ==========================================
+
+// Get ALL bookings on the platform
+app.get('/api/admin/bookings', auth, async (req, res) => {
+    try {
+        // In a real app, we'd check if req.user is actually an admin here.
+        // For this MVP, we allow any logged in user to open the admin view.
+        const allBookings = await Booking.find().sort({ createdAt: -1 });
+        res.json(allBookings);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error fetching all bookings' });
+    }
 });
+
+// Update any booking status
+app.patch('/api/admin/bookings/:id/status', auth, async (req, res) => {
+    try {
+        const { status } = req.body;
+        const booking = await Booking.findById(req.params.id);
+        
+        if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+        booking.status = status;
+        await booking.save();
+
+        res.json({ message: 'Booking status updated', booking });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error updating booking status' });
+    }
+});
+
+// --- 8. Start Server ---
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
