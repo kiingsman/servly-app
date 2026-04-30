@@ -379,6 +379,7 @@ const ClientApp = () => {
           </div>
         )}
 
+        {/* --- PROFILE TAB --- */}
         {activeTab === 'profile' && (
           <div className="flex-1 overflow-y-auto px-6 pt-10 pb-28 bg-gray-50">
             <h2 className="text-2xl font-bold text-primary mb-6">My Account</h2>
@@ -388,13 +389,17 @@ const ClientApp = () => {
               <p className="text-gray-500 text-sm mb-6">{user?.email || ''}</p>
               <button onClick={logout} className="bg-red-50 text-red-500 font-bold py-3 px-8 rounded-xl hover:bg-red-100 transition w-full">Log Out</button>
             </div>
-            <div onClick={() => setActiveTab('admin')} className="bg-gray-900 p-4 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-gray-800 transition shadow-lg mt-4">
-                <div className="flex items-center">
-                    <div className="w-10 h-10 bg-gray-800 rounded-xl flex items-center justify-center mr-4"><i className="fas fa-shield-alt text-teal-400"></i></div>
-                    <div><h4 className="text-white font-bold text-sm">Admin Dashboard</h4><p className="text-gray-400 text-xs">Manage platform & pros</p></div>
+            
+            {/* ONLY SHOW ADMIN DASHBOARD IF USER IS ADMIN */}
+            {user?.role === 'admin' && (
+                <div onClick={() => setActiveTab('admin')} className="bg-gray-900 p-4 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-gray-800 transition shadow-lg mt-4">
+                    <div className="flex items-center">
+                        <div className="w-10 h-10 bg-gray-800 rounded-xl flex items-center justify-center mr-4"><i className="fas fa-shield-alt text-teal-400"></i></div>
+                        <div><h4 className="text-white font-bold text-sm">Admin Dashboard</h4><p className="text-gray-400 text-xs">Manage platform & pros</p></div>
+                    </div>
+                    <i className="fas fa-chevron-right text-gray-500 text-sm"></i>
                 </div>
-                <i className="fas fa-chevron-right text-gray-500 text-sm"></i>
-            </div>
+            )}
           </div>
         )}
 
