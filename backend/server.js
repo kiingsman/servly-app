@@ -38,10 +38,7 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/servly', {
 })
 .catch(err => console.log('❌ MongoDB Connection Error:', err));
 
-// --- 3. Simple Test Route ---
-app.get('/', (req, res) => {
-    res.send('Servly API is awake, connected to MongoDB, and ready!');
-});
+app.get('/', (req, res) => res.send('Servly API is awake, connected to MongoDB, and ready!'));
 
 // ==========================================
 // 4. AUTHENTICATION ROUTES
@@ -54,15 +51,12 @@ app.post('/api/signup', async (req, res) => {
 
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
-
         const newUser = new User({ name, email, password: hashedPassword });
         const savedUser = await newUser.save();
 
         const token = jwt.sign({ userId: savedUser._id, name: savedUser.name }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '7d' });
         res.status(201).json({ token, user: { id: savedUser._id, name: savedUser.name, email: savedUser.email } });
-    } catch (error) {
-        res.status(500).json({ message: 'Server error during signup' });
-    }
+    } catch (error) { res.status(500).json({ message: 'Server error during signup' }); }
 });
 
 app.post('/api/login', async (req, res) => {
@@ -76,9 +70,7 @@ app.post('/api/login', async (req, res) => {
 
         const token = jwt.sign({ userId: user._id, name: user.name }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '7d' });
         res.json({ token, user: { id: user._id, name: user.name, email: user.email } });
-    } catch (error) {
-        res.status(500).json({ message: 'Server error during login' });
-    }
+    } catch (error) { res.status(500).json({ message: 'Server error during login' }); }
 });
 
 // ==========================================
@@ -86,11 +78,9 @@ app.post('/api/login', async (req, res) => {
 // ==========================================
 app.get('/api/professionals', async (req, res) => {
     try {
-        const pros = await Professional.find();
+        const pros = await Professional.find().sort({ createdAt: -1 }); // Newest first
         res.json(pros);
-    } catch (error) {
-        res.status(500).json({ message: 'Server error fetching professionals' });
-    }
+    } catch (error) { res.status(500).json({ message: 'Server error fetching professionals' }); }
 });
 
 // ==========================================
@@ -105,18 +95,14 @@ app.post('/api/bookings', auth, async (req, res) => {
         });
         const savedBooking = await newBooking.save();
         res.status(201).json(savedBooking);
-    } catch (error) {
-        res.status(500).json({ message: 'Server error saving booking' });
-    }
+    } catch (error) { res.status(500).json({ message: 'Server error saving booking' }); }
 });
 
 app.get('/api/bookings', auth, async (req, res) => {
     try {
         const userBookings = await Booking.find({ userId: req.user.id }).sort({ createdAt: -1 });
         res.json(userBookings);
-    } catch (error) {
-        res.status(500).json({ message: 'Server error fetching bookings' });
-    }
+    } catch (error) { res.status(500).json({ message: 'Server error fetching bookings' }); }
 });
 
 app.patch('/api/bookings/:id/cancel', auth, async (req, res) => {
@@ -128,41 +114,49 @@ app.patch('/api/bookings/:id/cancel', auth, async (req, res) => {
         booking.status = 'cancelled';
         await booking.save();
         res.json({ message: 'Booking cancelled successfully', booking });
-    } catch (error) {
-        res.status(500).json({ message: 'Server error cancelling booking' });
-    }
+    } catch (error) { res.status(500).json({ message: 'Server error cancelling booking' }); }
 });
 
 // ==========================================
-// 7. ADMIN ROUTES (NEW!)
+// 7. ADMIN ROUTES
 // ==========================================
-
-// Get ALL bookings on the platform
 app.get('/api/admin/bookings', auth, async (req, res) => {
     try {
-        // In a real app, we'd check if req.user is actually an admin here.
-        // For this MVP, we allow any logged in user to open the admin view.
         const allBookings = await Booking.find().sort({ createdAt: -1 });
         res.json(allBookings);
-    } catch (error) {
-        res.status(500).json({ message: 'Server error fetching all bookings' });
-    }
+    } catch (error) { res.status(500).json({ message: 'Server error fetching all bookings' }); }
 });
 
-// Update any booking status
 app.patch('/api/admin/bookings/:id/status', auth, async (req, res) => {
     try {
         const { status } = req.body;
         const booking = await Booking.findById(req.params.id);
-        
         if (!booking) return res.status(404).json({ message: 'Booking not found' });
 
         booking.status = status;
         await booking.save();
-
         res.json({ message: 'Booking status updated', booking });
+    } catch (error) { res.status(500).json({ message: 'Server error updating booking status' }); }
+});
+
+// NEW: Add a professional to the platform
+app.post('/api/admin/professionals', auth, async (req, res) => {
+    try {
+        const { name, title, category, price, avatar } = req.body;
+        
+        // Ensure an avatar is provided, or give a default one
+        const finalAvatar = avatar || `https://i.pravatar.cc/150?u=${Math.random()}`;
+
+        const newPro = new Professional({
+            name, title, category, price, avatar: finalAvatar,
+            rating: 5.0, distance: "1.0 km away", verified: true // defaults for new pros
+        });
+
+        const savedPro = await newPro.save();
+        res.status(201).json(savedPro);
     } catch (error) {
-        res.status(500).json({ message: 'Server error updating booking status' });
+        console.error("Error creating professional:", error);
+        res.status(500).json({ message: 'Server error creating professional' });
     }
 });
 

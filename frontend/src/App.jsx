@@ -17,31 +17,17 @@ const AuthScreen = () => {
   const { login } = useAuth();
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setIsLoading(true);
+    e.preventDefault(); setError(''); setIsLoading(true);
     const endpoint = isLogin ? '/api/login' : '/api/signup';
     const payload = isLogin ? { email, password } : { name, email, password };
 
     try {
-      const res = await fetch(`${backendUrl}${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const contentType = res.headers.get('content-type') || '';
-      const isJson = contentType.includes('application/json');
+      const res = await fetch(`${backendUrl}${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const isJson = (res.headers.get('content-type') || '').includes('application/json');
       const data = isJson ? await res.json() : await res.text();
-
       if (!res.ok) throw new Error(isJson ? (data.message || 'Something went wrong') : 'Server returned an invalid format.');
-      if (!isJson) throw new Error('Server returned HTML instead of JSON.');
-
       login(data.user, data.token);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
+    } catch (err) { setError(err.message); } finally { setIsLoading(false); }
   };
 
   return (
@@ -51,13 +37,10 @@ const AuthScreen = () => {
         <h1 className="text-4xl font-bold text-primary mb-2">Servly</h1>
         <p className="text-gray-500 font-medium">Your City's Premium Marketplace</p>
       </div>
-
       <form onSubmit={handleSubmit} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
         <h2 className="text-xl font-bold text-primary mb-6">{isLogin ? 'Welcome Back' : 'Create an Account'}</h2>
         {error && <div className="bg-red-50 text-red-500 p-3 rounded-xl text-sm mb-4">{error}</div>}
-        {!isLogin && (
-          <div className="mb-4"><label className="text-xs font-bold text-primary ml-1">Full Name</label><input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl mt-1 outline-none focus:ring-2 focus:ring-teal-600 text-sm" placeholder="John Doe" /></div>
-        )}
+        {!isLogin && <div className="mb-4"><label className="text-xs font-bold text-primary ml-1">Full Name</label><input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl mt-1 outline-none focus:ring-2 focus:ring-teal-600 text-sm" placeholder="John Doe" /></div>}
         <div className="mb-4"><label className="text-xs font-bold text-primary ml-1">Email Address</label><input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl mt-1 outline-none focus:ring-2 focus:ring-teal-600 text-sm" placeholder="john@example.com" /></div>
         <div className="mb-6"><label className="text-xs font-bold text-primary ml-1">Password</label><input type="password" required value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl mt-1 outline-none focus:ring-2 focus:ring-teal-600 text-sm" placeholder="••••••••" /></div>
         <button type="submit" disabled={isLoading} className="w-full bg-teal-600 text-white font-bold py-3.5 rounded-xl hover:bg-teal-700 transition shadow-md disabled:opacity-50">{isLoading ? 'Please wait...' : (isLogin ? 'Log In' : 'Sign Up')}</button>
@@ -83,8 +66,11 @@ const MainApp = () => {
   const [loadingBookings, setLoadingBookings] = useState(false);
 
   // Admin State
+  const [adminTab, setAdminTab] = useState('bookings'); // 'bookings' or 'addPro'
   const [adminBookings, setAdminBookings] = useState([]);
   const [loadingAdmin, setLoadingAdmin] = useState(false);
+  const [newProData, setNewProData] = useState({ name: '', title: '', category: 'cleaning', price: '', avatar: '' });
+  const [isAddingPro, setIsAddingPro] = useState(false);
 
   const [viewingProfile, setViewingProfile] = useState(null);
   const [bookingPro, setBookingPro] = useState(null);
@@ -92,15 +78,15 @@ const MainApp = () => {
   const [isBookingSuccess, setIsBookingSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch professionals
-  useEffect(() => {
+  const fetchProfessionals = () => {
     fetch(`${backendUrl}/api/professionals`)
       .then(res => res.json())
       .then(data => { setProfessionals(data); setLoadingPros(false); })
-      .catch(err => { console.error(err); setLoadingPros(false); });
-  }, []);
+      .catch(() => setLoadingPros(false));
+  };
 
-  // Fetch user bookings OR Admin bookings depending on tab
+  useEffect(() => { fetchProfessionals(); }, []);
+
   useEffect(() => {
     if (activeTab === 'bookings') {
       setLoadingBookings(true);
@@ -109,56 +95,57 @@ const MainApp = () => {
         .then(data => { setMyBookings(data); setLoadingBookings(false); })
         .catch(() => setLoadingBookings(false));
     }
-
-    if (activeTab === 'admin') {
+    if (activeTab === 'admin' && adminTab === 'bookings') {
       setLoadingAdmin(true);
       fetch(`${backendUrl}/api/admin/bookings`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } })
         .then(res => res.json())
         .then(data => { setAdminBookings(data); setLoadingAdmin(false); })
         .catch(() => setLoadingAdmin(false));
     }
-  }, [activeTab, logout]);
+  }, [activeTab, adminTab, logout]);
 
-  // Create booking
   const handleBookingSubmit = (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+    e.preventDefault(); setIsSubmitting(true);
     const payload = { professionalId: bookingPro._id || bookingPro.id, professionalName: bookingPro.name, date: bookingData.date, time: bookingData.time, address: bookingData.address, totalPrice: bookingPro.price };
-
-    fetch(`${backendUrl}/api/bookings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` },
-      body: JSON.stringify(payload)
-    })
+    fetch(`${backendUrl}/api/bookings`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, body: JSON.stringify(payload) })
     .then(res => res.json())
-    .then(() => { setIsSubmitting(false); setIsBookingSuccess(true); if (activeTab === 'bookings') setActiveTab('home'); })
+    .then(() => { setIsSubmitting(false); setIsBookingSuccess(true); })
     .catch(() => setIsSubmitting(false));
   };
 
-  // Cancel booking
   const handleCancelBooking = async (bookingId) => {
     if (!window.confirm("Cancel this booking?")) return;
-    try {
-      const res = await fetch(`${backendUrl}/api/bookings/${bookingId}/cancel`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } });
-      if (res.ok) setMyBookings(prev => prev.map(b => b._id === bookingId ? { ...b, status: 'cancelled' } : b));
-    } catch (err) { console.error(err); }
+    const res = await fetch(`${backendUrl}/api/bookings/${bookingId}/cancel`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } });
+    if (res.ok) setMyBookings(prev => prev.map(b => b._id === bookingId ? { ...b, status: 'cancelled' } : b));
   };
 
-  // ADMIN: Change booking status
   const handleAdminStatusUpdate = async (bookingId, newStatus) => {
-    try {
-        const res = await fetch(`${backendUrl}/api/admin/bookings/${bookingId}/status`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` },
-            body: JSON.stringify({ status: newStatus })
-        });
-        if (res.ok) {
-            // Update local admin state to show instant change
-            setAdminBookings(prev => prev.map(b => b._id === bookingId ? { ...b, status: newStatus } : b));
-        }
-    } catch (err) {
-        console.error("Failed to update status", err);
-    }
+    const res = await fetch(`${backendUrl}/api/admin/bookings/${bookingId}/status`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, body: JSON.stringify({ status: newStatus }) });
+    if (res.ok) setAdminBookings(prev => prev.map(b => b._id === bookingId ? { ...b, status: newStatus } : b));
+  };
+
+  const handleAddProfessional = async (e) => {
+      e.preventDefault();
+      setIsAddingPro(true);
+      try {
+          const res = await fetch(`${backendUrl}/api/admin/professionals`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` },
+              body: JSON.stringify({ ...newProData, price: Number(newProData.price) })
+          });
+          if (res.ok) {
+              alert("Professional Added Successfully!");
+              setNewProData({ name: '', title: '', category: 'cleaning', price: '', avatar: '' });
+              fetchProfessionals(); // Refresh the home list
+              setActiveTab('home'); // Send user to home to see the new pro
+          } else {
+              alert("Failed to add professional.");
+          }
+      } catch (err) {
+          console.error(err);
+      } finally {
+          setIsAddingPro(false);
+      }
   };
 
   const categories = [
@@ -193,7 +180,6 @@ const MainApp = () => {
                     <input type="text" placeholder="What service do you need?" className="w-full bg-gray-100 py-4 pl-12 pr-12 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-teal-600 transition-all relative" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
                 </div>
             </div>
-
             <div className="flex-1 overflow-y-auto px-6 pt-6 pb-28">
                 <div className="mb-8">
                     <h2 className="text-lg font-bold text-primary mb-4">Categories</h2>
@@ -206,7 +192,6 @@ const MainApp = () => {
                         ))}
                     </div>
                 </div>
-
                 <div>
                     <h2 className="text-lg font-bold text-primary mb-4">{selectedCategory ? `${categories.find(c => c.id === selectedCategory)?.name} Pros` : 'Top Rated Near You'}</h2>
                     {loadingPros ? <div className="text-center py-10"><i className="fas fa-spinner fa-spin text-teal-600 text-3xl"></i></div> : filteredPros.map(pro => (
@@ -236,37 +221,18 @@ const MainApp = () => {
         {activeTab === 'bookings' && (
           <div className="flex-1 overflow-y-auto px-6 pt-10 pb-28 bg-gray-50">
             <h2 className="text-2xl font-bold text-primary mb-6">My Bookings</h2>
-            {loadingBookings ? (
-              <div className="text-center py-20"><i className="fas fa-spinner fa-spin text-teal-600 text-4xl"></i></div>
-            ) : myBookings.length === 0 ? (
-              <div className="text-center py-20 bg-white rounded-3xl border border-gray-100">
-                  <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4"><i className="far fa-calendar-times text-3xl text-gray-400"></i></div>
-                  <h3 className="font-bold text-primary mb-2">No Bookings Yet</h3>
-                  <p className="text-gray-500 text-sm mb-6 px-4">You haven't booked any professionals yet.</p>
-                  <button onClick={() => setActiveTab('home')} className="bg-teal-600 text-white font-medium px-6 py-3 rounded-xl">Find a Professional</button>
-              </div>
-            ) : myBookings.map(booking => {
-                let statusColor = 'bg-orange-50 text-orange-500';
-                if (booking.status === 'confirmed') statusColor = 'bg-teal-50 text-teal-600';
-                if (booking.status === 'completed') statusColor = 'bg-blue-50 text-blue-600';
-                if (booking.status === 'cancelled') statusColor = 'bg-red-50 text-red-500 line-through opacity-70';
-
+            {loadingBookings ? <div className="text-center py-20"><i className="fas fa-spinner fa-spin text-teal-600 text-4xl"></i></div> : myBookings.length === 0 ? <p className="text-center text-gray-500 mt-10">No bookings yet.</p> : myBookings.map(booking => {
+                let statusColor = booking.status === 'confirmed' ? 'bg-teal-50 text-teal-600' : booking.status === 'completed' ? 'bg-blue-50 text-blue-600' : booking.status === 'cancelled' ? 'bg-red-50 text-red-500 line-through opacity-70' : 'bg-orange-50 text-orange-500';
                 return (
-                  <div key={booking._id} className={`bg-white p-5 rounded-3xl shadow-sm border border-gray-100 mb-4 relative overflow-hidden transition-all ${booking.status === 'cancelled' ? 'opacity-60' : ''}`}>
+                  <div key={booking._id} className={`bg-white p-5 rounded-3xl shadow-sm border border-gray-100 mb-4 relative ${booking.status === 'cancelled' ? 'opacity-60' : ''}`}>
                     <div className={`absolute top-0 left-0 w-1 h-full ${booking.status === 'cancelled' ? 'bg-red-500' : 'bg-teal-600'}`}></div>
                     <div className="flex justify-between items-start border-b border-gray-50 pb-3 mb-3 pl-2">
-                      <div>
-                        <p className="text-xs text-gray-400 font-medium mb-1">Service with</p>
-                        <h3 className="font-bold text-primary text-lg">{booking.professionalName}</h3>
-                      </div>
+                      <div><p className="text-xs text-gray-400 font-medium mb-1">Service with</p><h3 className="font-bold text-primary text-lg">{booking.professionalName}</h3></div>
                       <div className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase ${statusColor}`}>{booking.status}</div>
                     </div>
                     <div className="pl-2">
-                      <div className="flex items-center text-sm text-gray-600 mb-2"><i className="far fa-calendar-alt w-6 text-teal-600 text-center"></i><span className="font-medium">{new Date(booking.date).toLocaleDateString()} at {booking.time}</span></div>
-                      <div className="flex items-start text-sm text-gray-600 mb-4"><i className="fas fa-map-marker-alt w-6 text-teal-600 text-center mt-1"></i><span className="flex-1">{booking.address}</span></div>
-                      {booking.status === 'pending' && (
-                          <button onClick={() => handleCancelBooking(booking._id)} className="mt-2 w-full py-2 bg-red-50 text-red-500 text-xs font-bold rounded-xl hover:bg-red-100 transition"><i className="fas fa-times-circle mr-1"></i> Cancel Booking</button>
-                      )}
+                      <p className="text-sm text-gray-600 mb-2"><i className="far fa-calendar-alt w-6 text-teal-600 text-center"></i>{new Date(booking.date).toLocaleDateString()} at {booking.time}</p>
+                      {booking.status === 'pending' && <button onClick={() => handleCancelBooking(booking._id)} className="mt-2 w-full py-2 bg-red-50 text-red-500 text-xs font-bold rounded-xl hover:bg-red-100">Cancel Booking</button>}
                     </div>
                   </div>
                 );
@@ -274,54 +240,76 @@ const MainApp = () => {
           </div>
         )}
 
-        {/* --- ADMIN DASHBOARD TAB (NEW!) --- */}
+        {/* --- ADMIN DASHBOARD TAB --- */}
         {activeTab === 'admin' && (
-          <div className="flex-1 overflow-y-auto px-6 pt-10 pb-28 bg-gray-900">
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-white"><i className="fas fa-shield-alt mr-2 text-teal-400"></i>Admin Panel</h2>
-                <button onClick={() => setActiveTab('profile')} className="text-gray-400 hover:text-white bg-gray-800 px-3 py-1 rounded-lg text-xs font-bold transition">Close</button>
+          <div className="flex-1 overflow-y-auto bg-gray-900 flex flex-col h-full">
+            <div className="px-6 pt-10 pb-4 flex justify-between items-center sticky top-0 bg-gray-900 z-10 border-b border-gray-800">
+                <h2 className="text-2xl font-bold text-white"><i className="fas fa-shield-alt mr-2 text-teal-400"></i>Admin</h2>
+                <button onClick={() => setActiveTab('profile')} className="text-gray-400 hover:text-white bg-gray-800 px-3 py-1 rounded-lg text-xs font-bold">Close</button>
             </div>
             
-            {loadingAdmin ? (
-              <div className="text-center py-20"><i className="fas fa-spinner fa-spin text-teal-400 text-4xl"></i></div>
-            ) : adminBookings.length === 0 ? (
-              <p className="text-gray-400 text-center py-10">No bookings exist on the platform yet.</p>
-            ) : adminBookings.map(booking => {
-                let statusColor = 'bg-orange-500/20 text-orange-400';
-                if (booking.status === 'confirmed') statusColor = 'bg-teal-500/20 text-teal-400';
-                if (booking.status === 'completed') statusColor = 'bg-blue-500/20 text-blue-400';
-                if (booking.status === 'cancelled') statusColor = 'bg-red-500/20 text-red-400 opacity-60';
+            {/* Admin Nav Toggle */}
+            <div className="flex px-6 mt-4 mb-6">
+                <button onClick={() => setAdminTab('bookings')} className={`flex-1 py-3 text-sm font-bold rounded-l-xl border border-gray-700 ${adminTab === 'bookings' ? 'bg-teal-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>All Bookings</button>
+                <button onClick={() => setAdminTab('addPro')} className={`flex-1 py-3 text-sm font-bold rounded-r-xl border border-gray-700 border-l-0 ${adminTab === 'addPro' ? 'bg-teal-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}><i className="fas fa-user-plus mr-2"></i>Add Pro</button>
+            </div>
 
-                return (
-                  <div key={booking._id} className="bg-gray-800 p-5 rounded-2xl mb-4 border border-gray-700">
-                    <div className="flex justify-between items-start mb-3 border-b border-gray-700 pb-3">
-                      <div>
-                        <p className="text-xs text-gray-400 mb-1">Client: <strong className="text-white">{booking.clientName}</strong></p>
-                        <p className="text-xs text-gray-400">Pro: <strong className="text-white">{booking.professionalName}</strong></p>
-                      </div>
-                      <div className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${statusColor}`}>{booking.status}</div>
-                    </div>
-                    
-                    <div className="text-xs text-gray-300 mb-4">
-                        <p><i className="far fa-calendar-alt w-4 text-teal-400 mb-1"></i> {new Date(booking.date).toLocaleDateString()} at {booking.time}</p>
-                        <p><i className="fas fa-map-marker-alt w-4 text-teal-400"></i> {booking.address}</p>
-                    </div>
-
-                    {/* Admin Actions */}
-                    {booking.status !== 'cancelled' && (
-                        <div className="flex gap-2">
-                            {booking.status === 'pending' && (
-                                <button onClick={() => handleAdminStatusUpdate(booking._id, 'confirmed')} className="flex-1 bg-teal-600 hover:bg-teal-500 text-white text-xs py-2 rounded-lg font-bold transition">Confirm</button>
+            <div className="px-6 pb-28">
+                {/* Bookings View */}
+                {adminTab === 'bookings' && (
+                    loadingAdmin ? <div className="text-center py-10"><i className="fas fa-spinner fa-spin text-teal-400 text-4xl"></i></div> : adminBookings.map(booking => {
+                        return (
+                        <div key={booking._id} className="bg-gray-800 p-5 rounded-2xl mb-4 border border-gray-700">
+                            <div className="flex justify-between items-start mb-3 border-b border-gray-700 pb-3">
+                                <div><p className="text-xs text-gray-400">Client: <strong className="text-white">{booking.clientName}</strong></p><p className="text-xs text-gray-400">Pro: <strong className="text-white">{booking.professionalName}</strong></p></div>
+                                <div className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-gray-700 text-white">{booking.status}</div>
+                            </div>
+                            {booking.status !== 'cancelled' && (
+                                <div className="flex gap-2 mt-4">
+                                    {booking.status === 'pending' && <button onClick={() => handleAdminStatusUpdate(booking._id, 'confirmed')} className="flex-1 bg-teal-600 text-white text-xs py-2 rounded-lg font-bold">Confirm</button>}
+                                    {booking.status === 'confirmed' && <button onClick={() => handleAdminStatusUpdate(booking._id, 'completed')} className="flex-1 bg-blue-600 text-white text-xs py-2 rounded-lg font-bold">Complete</button>}
+                                    <button onClick={() => handleAdminStatusUpdate(booking._id, 'cancelled')} className="flex-1 bg-gray-700 text-red-400 text-xs py-2 rounded-lg font-bold">Cancel</button>
+                                </div>
                             )}
-                            {booking.status === 'confirmed' && (
-                                <button onClick={() => handleAdminStatusUpdate(booking._id, 'completed')} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-xs py-2 rounded-lg font-bold transition">Mark Completed</button>
-                            )}
-                            <button onClick={() => handleAdminStatusUpdate(booking._id, 'cancelled')} className="flex-1 bg-gray-700 hover:bg-red-600 text-white text-xs py-2 rounded-lg font-bold transition">Force Cancel</button>
                         </div>
-                    )}
-                  </div>
-                );
-            })}
+                        );
+                    })
+                )}
+
+                {/* Add Professional View */}
+                {adminTab === 'addPro' && (
+                    <form onSubmit={handleAddProfessional} className="bg-gray-800 p-6 rounded-2xl border border-gray-700 flex flex-col gap-4">
+                        <div>
+                            <label className="text-xs font-bold text-gray-400">Full Name</label>
+                            <input type="text" required value={newProData.name} onChange={e => setNewProData({...newProData, name: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-xl mt-1 outline-none focus:border-teal-500" placeholder="e.g. John Smith" />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-gray-400">Job Title</label>
+                            <input type="text" required value={newProData.title} onChange={e => setNewProData({...newProData, title: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-xl mt-1 outline-none focus:border-teal-500" placeholder="e.g. Master Electrician" />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-gray-400">Category</label>
+                            <select value={newProData.category} onChange={e => setNewProData({...newProData, category: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-xl mt-1 outline-none focus:border-teal-500">
+                                <option value="cleaning">Cleaning</option>
+                                <option value="electric">Electric</option>
+                                <option value="plumbing">Plumbing</option>
+                                <option value="ac">AC Repair</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-gray-400">Hourly Price (₦)</label>
+                            <input type="number" required value={newProData.price} onChange={e => setNewProData({...newProData, price: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-xl mt-1 outline-none focus:border-teal-500" placeholder="e.g. 15000" />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-gray-400">Avatar Image URL (Optional)</label>
+                            <input type="text" value={newProData.avatar} onChange={e => setNewProData({...newProData, avatar: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-xl mt-1 outline-none focus:border-teal-500" placeholder="https://..." />
+                        </div>
+                        <button type="submit" disabled={isAddingPro} className="w-full bg-teal-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-teal-500 transition">
+                            {isAddingPro ? 'Adding...' : 'Add Professional to Platform'}
+                        </button>
+                    </form>
+                )}
+            </div>
           </div>
         )}
 
@@ -329,22 +317,16 @@ const MainApp = () => {
         {activeTab === 'profile' && (
           <div className="flex-1 overflow-y-auto px-6 pt-10 pb-28 bg-gray-50">
             <h2 className="text-2xl font-bold text-primary mb-6">My Account</h2>
-            
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6 text-center">
               <div className="w-24 h-24 bg-teal-100 text-teal-600 rounded-full flex items-center justify-center text-4xl font-bold mx-auto mb-4 border-4 border-white shadow-md">{user?.name?.charAt(0).toUpperCase() || 'G'}</div>
               <h3 className="font-bold text-xl text-primary">{user?.name || 'User'}</h3>
               <p className="text-gray-500 text-sm mb-6">{user?.email || ''}</p>
               <button onClick={logout} className="bg-red-50 text-red-500 font-bold py-3 px-8 rounded-xl hover:bg-red-100 transition w-full">Log Out</button>
             </div>
-
-            {/* Secret Admin Button */}
             <div onClick={() => setActiveTab('admin')} className="bg-gray-900 p-4 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-gray-800 transition shadow-lg mt-4">
                 <div className="flex items-center">
                     <div className="w-10 h-10 bg-gray-800 rounded-xl flex items-center justify-center mr-4"><i className="fas fa-shield-alt text-teal-400"></i></div>
-                    <div>
-                        <h4 className="text-white font-bold text-sm">Admin Dashboard</h4>
-                        <p className="text-gray-400 text-xs">Manage platform bookings</p>
-                    </div>
+                    <div><h4 className="text-white font-bold text-sm">Admin Dashboard</h4><p className="text-gray-400 text-xs">Manage platform & pros</p></div>
                 </div>
                 <i className="fas fa-chevron-right text-gray-500 text-sm"></i>
             </div>
@@ -362,24 +344,20 @@ const MainApp = () => {
                     <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
                         <div className="w-24 h-24 bg-teal-50 rounded-full flex items-center justify-center mb-6"><i className="fas fa-check text-4xl text-teal-600"></i></div>
                         <h2 className="text-2xl font-bold text-primary mb-2">Booking Confirmed!</h2>
-                        <p className="text-gray-500 mb-8">Your request has been saved. Go to the Bookings tab to view it.</p>
-                        <button onClick={() => { setBookingPro(null); setIsBookingSuccess(false); setActiveTab('bookings'); }} className="w-full bg-primary text-white font-bold py-4 rounded-2xl">View My Bookings</button>
+                        <button onClick={() => { setBookingPro(null); setIsBookingSuccess(false); setActiveTab('bookings'); }} className="w-full bg-primary text-white font-bold py-4 rounded-2xl mt-8">View My Bookings</button>
                     </div>
                 ) : (
                     <form onSubmit={handleBookingSubmit} className="flex-1 overflow-y-auto p-6 flex flex-col pb-28">
                         <label className="text-sm font-bold text-primary mb-2">Select Date</label>
                         <input type="date" required className="w-full bg-gray-50 border border-gray-200 p-4 rounded-xl mb-6 outline-none focus:ring-2 focus:ring-teal-600" value={bookingData.date} onChange={e => setBookingData({...bookingData, date: e.target.value})} />
-                        
                         <label className="text-sm font-bold text-primary mb-2">Select Time</label>
                         <div className="grid grid-cols-3 gap-3 mb-6">
                             {['10:00 AM', '1:00 PM', '4:00 PM'].map(time => (
                                 <div key={time} onClick={() => setBookingData({...bookingData, time})} className={`text-center py-3 rounded-xl text-sm font-medium cursor-pointer ${bookingData.time === time ? 'bg-primary text-white' : 'bg-gray-50 text-gray-600'}`}>{time}</div>
                             ))}
                         </div>
-
                         <label className="text-sm font-bold text-primary mb-2">Address</label>
                         <textarea required className="w-full bg-gray-50 border border-gray-200 p-4 rounded-xl mb-6 h-28 outline-none focus:ring-2 focus:ring-teal-600 resize-none" value={bookingData.address} onChange={e => setBookingData({...bookingData, address: e.target.value})}></textarea>
-
                         <button type="submit" disabled={isSubmitting} className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl mt-auto">{isSubmitting ? 'Confirming...' : 'Confirm Booking'}</button>
                     </form>
                 )}
@@ -407,7 +385,7 @@ const MainApp = () => {
         <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-6 py-4 flex justify-between items-center pb-8 z-20">
             {['home', 'bookings', 'chat', 'profile'].map((tab, idx) => {
               const icons = ['fa-home', 'fa-calendar-alt', 'fa-comment-dots', 'fa-user'];
-              const isSolid = (tab === 'home');
+              const isSolid = (tab === 'home' && activeTab !== 'admin');
               return (
                 <div key={tab} onClick={() => setActiveTab(tab)} className={`flex flex-col items-center cursor-pointer ${activeTab === tab ? 'text-teal-600' : 'text-gray-400'}`}>
                     <i className={`${isSolid ? 'fas' : 'far'} ${icons[idx]} text-xl mb-1`}></i>
@@ -425,9 +403,6 @@ const MainApp = () => {
   );
 };
 
-// ==========================================
-// GLOBAL APP WRAPPER
-// ==========================================
 const AppController = () => {
   const { user, loading } = useAuth();
   if (loading) return <div className="h-screen bg-gray-200 flex items-center justify-center"><i className="fas fa-circle-notch fa-spin text-teal-600 text-4xl"></i></div>;
