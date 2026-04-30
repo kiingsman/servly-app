@@ -4,7 +4,6 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-
 const http = require('http');
 const { Server } = require('socket.io');
 
@@ -34,7 +33,7 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/servly', { 
 .then(() => console.log('✅ MongoDB Connected!'))
 .catch(err => console.log('❌ MongoDB Error:', err));
 
-app.get('/', (req, res) => res.send('Servly API with Live Tracking!'));
+app.get('/', (req, res) => res.send('Servly API with Live Tracking & Video Calls!'));
 
 // ==========================================
 // SOCKET.IO LOGIC
@@ -45,21 +44,18 @@ io.on('connection', (socket) => {
     socket.on('register_user', (userId) => { userSockets[userId] = socket.id; });
     socket.on('join_room', (room) => socket.join(room));
     
-    // Standard Chat Messages
+    // Chat & Notifications
     socket.on('send_message', async (data) => {
         try {
             await new Message({ bookingId: data.room, author: data.author, message: data.message, time: data.time }).save();
             socket.to(data.room).emit('receive_message', data);
-
             const booking = await Booking.findById(data.room);
             if (booking) {
                 let recipientUserId = null;
                 if (data.author === booking.clientName) {
                     const proProfile = await Professional.findById(booking.professionalId);
                     if (proProfile) recipientUserId = proProfile.userId;
-                } else {
-                    recipientUserId = booking.userId;
-                }
+                } else { recipientUserId = booking.userId; }
                 if (recipientUserId) {
                     const notif = new Notification({ userId: recipientUserId, title: "New Message", message: `From ${data.author}: "${data.message.substring(0, 30)}..."`, type: "message" });
                     await notif.save();
@@ -69,11 +65,13 @@ io.on('connection', (socket) => {
         } catch (err) { console.error(err); }
     });
 
-    // --- NEW: Live Location Broadcasting ---
-    socket.on('live_location_update', (data) => {
-        // Automatically send the GPS coordinates to the other person in the room
-        socket.to(data.room).emit('receive_live_location', data);
-    });
+    socket.on('live_location_update', (data) => socket.to(data.room).emit('receive_live_location', data));
+
+    // --- NEW: WEBRTC VIDEO CALL SIGNALING ---
+    socket.on('call_user', (data) => socket.to(data.room).emit('incoming_call', data));
+    socket.on('accept_call', (data) => socket.to(data.room).emit('call_accepted', data));
+    socket.on('ice_candidate', (data) => socket.to(data.room).emit('ice_candidate', data));
+    socket.on('end_call', (data) => socket.to(data.room).emit('call_ended'));
 
     socket.on('disconnect', () => {
         for (const [userId, socketId] of Object.entries(userSockets)) {
@@ -82,9 +80,7 @@ io.on('connection', (socket) => {
     });
 });
 
-// ==========================================
-// AUTHENTICATION ROUTES
-// ==========================================
+// Auth Routes
 app.post('/api/signup', async (req, res) => {
     try {
         const { name, email, password } = req.body;
@@ -94,7 +90,6 @@ app.post('/api/signup', async (req, res) => {
         res.status(201).json({ token, user: { id: newUser._id, name: newUser.name, email: newUser.email, role: newUser.role } });
     } catch (error) { res.status(500).json({ message: 'Server error' }); }
 });
-
 app.post('/api/pro-signup', async (req, res) => {
     try {
         const { name, email, password, title, category, price } = req.body;
@@ -105,7 +100,6 @@ app.post('/api/pro-signup', async (req, res) => {
         res.status(201).json({ token, user: { id: newUser._id, name: newUser.name, email: newUser.email, role: newUser.role, proId: newPro._id } });
     } catch (error) { res.status(500).json({ message: 'Server error' }); }
 });
-
 app.post('/api/login', async (req, res) => {
     try {
         const user = await User.findOne({ email: req.body.email });
@@ -120,16 +114,12 @@ app.post('/api/login', async (req, res) => {
     } catch (error) { res.status(500).json({ message: 'Server error' }); }
 });
 
-// ==========================================
-// ROUTES (Professionals, Bookings, Notifications)
-// ==========================================
+// Main Routes
 app.get('/api/professionals', async (req, res) => { res.json(await Professional.find().sort({ createdAt: -1 })); });
-
 app.post('/api/bookings', auth, async (req, res) => {
     try {
         const newBooking = new Booking({ userId: req.user.id, clientName: req.user.name, professionalId: req.body.professionalId, professionalName: req.body.professionalName, date: req.body.date, time: req.body.time, address: req.body.address, totalPrice: req.body.totalPrice });
         const savedBooking = await newBooking.save();
-
         const proProfile = await Professional.findById(req.body.professionalId);
         if (proProfile && proProfile.userId) {
             const notif = new Notification({ userId: proProfile.userId, title: "New Booking Request!", message: `${req.user.name} booked you for ${req.body.date}.`, type: "booking" });
@@ -139,9 +129,7 @@ app.post('/api/bookings', auth, async (req, res) => {
         res.status(201).json(savedBooking);
     } catch (error) { res.status(500).json({ message: 'Error' }); }
 });
-
 app.get('/api/bookings', auth, async (req, res) => { res.json(await Booking.find({ userId: req.user.id }).sort({ createdAt: -1 })); });
-
 app.get('/api/pro/bookings', auth, async (req, res) => {
     try {
         const proProfile = await Professional.findOne({ userId: req.user.id });
@@ -149,23 +137,19 @@ app.get('/api/pro/bookings', auth, async (req, res) => {
         res.json(await Booking.find({ professionalId: proProfile._id }).sort({ createdAt: -1 }));
     } catch (error) { res.status(500).json({ message: 'Error' }); }
 });
-
 app.patch('/api/bookings/:id/cancel', auth, async (req, res) => {
     const booking = await Booking.findById(req.params.id);
     booking.status = 'cancelled';
     res.json(await booking.save());
 });
-
 app.patch('/api/admin/bookings/:id/status', auth, async (req, res) => {
     try {
         const booking = await Booking.findById(req.params.id);
         booking.status = req.body.status;
         await booking.save();
-
         const notif = new Notification({ userId: booking.userId, title: "Booking Update", message: `Your booking with ${booking.professionalName} was marked as ${req.body.status}.`, type: "status" });
         await notif.save();
         if (userSockets[booking.userId]) io.to(userSockets[booking.userId]).emit('new_notification', notif);
-
         res.json(booking);
     } catch (error) { res.status(500).json({ message: 'Error' }); }
 });
