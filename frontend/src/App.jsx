@@ -80,10 +80,8 @@ const MainApp = () => {
   const [isBookingSuccess, setIsBookingSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- CHAT STATE ---
   const [currentMessage, setCurrentMessage] = useState('');
   const [messageList, setMessageList] = useState([]);
-  // activeChatRoom now holds the full booking object so we know the Pro's name
   const [activeChatRoom, setActiveChatRoom] = useState(null); 
   const chatEndRef = useRef(null);
 
@@ -123,7 +121,6 @@ const MainApp = () => {
         .catch(() => setLoadingAdmin(false));
     }
     
-    // Join specific room when chat opens
     if (activeTab === 'chat' && activeChatRoom) {
         socket.emit('join_room', activeChatRoom._id);
     }
@@ -157,20 +154,33 @@ const MainApp = () => {
       } catch (err) { console.error(err); } finally { setIsAddingPro(false); }
   };
 
-  // Open a private chat room
-  const openPrivateChat = (booking) => {
+  // --- NEW: FETCH CHAT HISTORY ON OPEN ---
+  const openPrivateChat = async (booking) => {
       setActiveChatRoom(booking);
-      setMessageList([]); // Clear previous chat history for UI
+      setMessageList([]); // clear UI temporarily
       setActiveTab('chat');
+      
+      try {
+          const res = await fetch(`${backendUrl}/api/chat/${booking._id}`, {
+              headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }
+          });
+          if (res.ok) {
+              const history = await res.json();
+              setMessageList(history);
+          }
+      } catch (err) {
+          console.error("Failed to load chat history", err);
+      }
   };
 
   const sendMessage = async () => {
       if (currentMessage !== "" && activeChatRoom) {
+          const timeString = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
           const messageData = {
-              room: activeChatRoom._id, // Send to this exact booking ID room
+              room: activeChatRoom._id, 
               author: user.name,
               message: currentMessage,
-              time: new Date(Date.now()).getHours() + ":" + new Date(Date.now()).getMinutes()
+              time: timeString
           };
           await socket.emit('send_message', messageData);
           setMessageList((list) => [...list, messageData]); 
@@ -263,7 +273,6 @@ const MainApp = () => {
                     <div className="pl-2">
                       <p className="text-sm text-gray-600 mb-4"><i className="far fa-calendar-alt w-6 text-teal-600 text-center"></i>{new Date(booking.date).toLocaleDateString()} at {booking.time}</p>
                       
-                      {/* Actions row: Cancel and Chat */}
                       {booking.status !== 'cancelled' && (
                           <div className="flex gap-2">
                               {booking.status === 'pending' && <button onClick={() => handleCancelBooking(booking._id)} className="flex-1 py-2 bg-red-50 text-red-500 text-xs font-bold rounded-xl hover:bg-red-100">Cancel</button>}
@@ -325,7 +334,6 @@ const MainApp = () => {
                     </div>
                  </>
              ) : (
-                 // If user clicks the raw Chat icon from nav without selecting a booking
                  <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
                      <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4"><i className="far fa-comment-dots text-3xl text-gray-400"></i></div>
                      <h2 className="text-xl font-bold text-primary mb-2">No Active Chat</h2>

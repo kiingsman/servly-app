@@ -5,7 +5,6 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-// --- NEW: Socket.io Imports ---
 const http = require('http');
 const { Server } = require('socket.io');
 
@@ -14,22 +13,25 @@ const User = require('./models/User');
 const Booking = require('./models/Booking');
 const Professional = require('./models/Professional');
 
-const app = express();
+// --- NEW: Message Model ---
+const messageSchema = new mongoose.Schema({
+    bookingId: { type: String, required: true },
+    author: { type: String, required: true },
+    message: { type: String, required: true },
+    time: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now }
+});
+const Message = mongoose.model('Message', messageSchema);
 
-// --- NEW: Wrap Express with HTTP Server for Socket.io ---
+const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-    cors: {
-        origin: "*", // Allow all origins for Vercel
-        methods: ["GET", "POST"]
-    }
+    cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// --- 1. Middleware ---
 app.use(cors()); 
 app.use(express.json());
 
-// --- 2. Database Connection ---
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/servly', {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -50,7 +52,7 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/servly', {
 })
 .catch(err => console.log('❌ MongoDB Connection Error:', err));
 
-app.get('/', (req, res) => res.send('Servly API is awake with Socket.io!'));
+app.get('/', (req, res) => res.send('Servly API is awake with Persistent Chat!'));
 
 // ==========================================
 // SOCKET.IO REAL-TIME CHAT LOGIC
@@ -58,15 +60,26 @@ app.get('/', (req, res) => res.send('Servly API is awake with Socket.io!'));
 io.on('connection', (socket) => {
     console.log(`🔌 User connected: ${socket.id}`);
 
-    // Listen for a user joining a specific chat room (e.g., booking ID)
     socket.on('join_room', (room) => {
         socket.join(room);
         console.log(`User joined room: ${room}`);
     });
 
-    // Listen for messages from the frontend
-    socket.on('send_message', (data) => {
-        // Broadcast the message to everyone else in that specific room
+    socket.on('send_message', async (data) => {
+        try {
+            // --- NEW: Save message to MongoDB ---
+            const newMsg = new Message({
+                bookingId: data.room,
+                author: data.author,
+                message: data.message,
+                time: data.time
+            });
+            await newMsg.save();
+        } catch (err) {
+            console.error("Error saving message to DB", err);
+        }
+
+        // Broadcast to others in the room
         socket.to(data.room).emit('receive_message', data);
     });
 
@@ -74,7 +87,6 @@ io.on('connection', (socket) => {
         console.log(`🔴 User disconnected: ${socket.id}`);
     });
 });
-
 
 // ==========================================
 // AUTHENTICATION ROUTES
@@ -154,6 +166,19 @@ app.patch('/api/bookings/:id/cancel', auth, async (req, res) => {
 });
 
 // ==========================================
+// CHAT ROUTES (NEW!)
+// ==========================================
+app.get('/api/chat/:bookingId', auth, async (req, res) => {
+    try {
+        // Fetch all messages for this specific booking, sorted from oldest to newest
+        const messages = await Message.find({ bookingId: req.params.bookingId }).sort({ createdAt: 1 });
+        res.json(messages);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error fetching chat history' });
+    }
+});
+
+// ==========================================
 // ADMIN ROUTES
 // ==========================================
 app.get('/api/admin/bookings', auth, async (req, res) => {
@@ -188,6 +213,5 @@ app.post('/api/admin/professionals', auth, async (req, res) => {
     } catch (error) { res.status(500).json({ message: 'Server error creating professional' }); }
 });
 
-// --- 8. Start Server (IMPORTANT: using server.listen instead of app.listen) ---
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => console.log(`🚀 Server with WebSockets running on port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Server with Persistent WebSockets running on port ${PORT}`));
