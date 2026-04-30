@@ -81,40 +81,36 @@ const ClientApp = () => {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [professionals, setProfessionals] = useState([]);
   const [loadingPros, setLoadingPros] = useState(true);
-
   const [myBookings, setMyBookings] = useState([]);
   const [loadingBookings, setLoadingBookings] = useState(false);
-
-  const [adminTab, setAdminTab] = useState('bookings');
-  const [adminBookings, setAdminBookings] = useState([]);
-  const [loadingAdmin, setLoadingAdmin] = useState(false);
-  const [newProData, setNewProData] = useState({ name: '', title: '', category: 'cleaning', price: '', avatar: '' });
-  const [isAddingPro, setIsAddingPro] = useState(false);
 
   const [viewingProfile, setViewingProfile] = useState(null);
   const [bookingPro, setBookingPro] = useState(null);
   const [bookingData, setBookingData] = useState({ date: '', time: '10:00 AM', address: '' });
   const [isBookingSuccess, setIsBookingSuccess] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [currentMessage, setCurrentMessage] = useState('');
   const [messageList, setMessageList] = useState([]);
+  const [currentMessage, setCurrentMessage] = useState('');
   const [activeChatRoom, setActiveChatRoom] = useState(null); 
   const chatEndRef = useRef(null);
 
-  const fetchProfessionals = () => {
-    fetch(`${backendUrl}/api/professionals`)
-      .then(res => res.json())
-      .then(data => { setProfessionals(data); setLoadingPros(false); })
-      .catch(() => setLoadingPros(false));
-  };
-
-  useEffect(() => { fetchProfessionals(); }, []);
+  // NOTIFICATION STATE
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifs, setShowNotifs] = useState(false);
+  const unreadCount = notifications.filter(n => !n.isRead).length;
 
   useEffect(() => {
-      const receiveMessageHandler = (data) => setMessageList((list) => [...list, data]);
-      socket.on('receive_message', receiveMessageHandler);
-      return () => socket.off('receive_message', receiveMessageHandler);
+    fetch(`${backendUrl}/api/professionals`).then(res => res.json()).then(data => { setProfessionals(data); setLoadingPros(false); });
+    
+    // Fetch initial notifications
+    fetch(`${backendUrl}/api/notifications`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } })
+      .then(res => res.json()).then(data => setNotifications(data)).catch(() => {});
+
+    // Listen for socket events
+    socket.on('receive_message', (data) => setMessageList((list) => [...list, data]));
+    socket.on('new_notification', (notif) => setNotifications((prev) => [notif, ...prev]));
+
+    return () => { socket.off('receive_message'); socket.off('new_notification'); };
   }, []);
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messageList, activeTab]);
@@ -123,29 +119,16 @@ const ClientApp = () => {
     if (activeTab === 'bookings') {
       setLoadingBookings(true);
       fetch(`${backendUrl}/api/bookings`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } })
-        .then(res => { if (res.status === 401) { logout(); throw new Error("Expired."); } return res.json(); })
-        .then(data => { setMyBookings(data); setLoadingBookings(false); })
-        .catch(() => setLoadingBookings(false));
+        .then(res => res.json()).then(data => { setMyBookings(data); setLoadingBookings(false); });
     }
-    if (activeTab === 'admin' && adminTab === 'bookings') {
-      setLoadingAdmin(true);
-      fetch(`${backendUrl}/api/admin/bookings`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } })
-        .then(res => res.json())
-        .then(data => { setAdminBookings(data); setLoadingAdmin(false); })
-        .catch(() => setLoadingAdmin(false));
-    }
-    if (activeTab === 'chat' && activeChatRoom) {
-        socket.emit('join_room', activeChatRoom._id);
-    }
-  }, [activeTab, adminTab, logout, activeChatRoom]);
+    if (activeTab === 'chat' && activeChatRoom) socket.emit('join_room', activeChatRoom._id);
+  }, [activeTab, activeChatRoom]);
 
   const handleBookingSubmit = (e) => {
-    e.preventDefault(); setIsSubmitting(true);
+    e.preventDefault();
     const payload = { professionalId: bookingPro._id || bookingPro.id, professionalName: bookingPro.name, date: bookingData.date, time: bookingData.time, address: bookingData.address, totalPrice: bookingPro.price };
     fetch(`${backendUrl}/api/bookings`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, body: JSON.stringify(payload) })
-    .then(res => res.json())
-    .then(() => { setIsSubmitting(false); setIsBookingSuccess(true); })
-    .catch(() => setIsSubmitting(false));
+    .then(res => res.json()).then(() => setIsBookingSuccess(true));
   };
 
   const handleCancelBooking = async (bookingId) => {
@@ -154,51 +137,27 @@ const ClientApp = () => {
     if (res.ok) setMyBookings(prev => prev.map(b => b._id === bookingId ? { ...b, status: 'cancelled' } : b));
   };
 
-  const handleAdminStatusUpdate = async (bookingId, newStatus) => {
-    const res = await fetch(`${backendUrl}/api/admin/bookings/${bookingId}/status`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, body: JSON.stringify({ status: newStatus }) });
-    if (res.ok) setAdminBookings(prev => prev.map(b => b._id === bookingId ? { ...b, status: newStatus } : b));
-  };
-
-  const handleAddProfessional = async (e) => {
-      e.preventDefault(); setIsAddingPro(true);
-      try {
-          const res = await fetch(`${backendUrl}/api/admin/professionals`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, body: JSON.stringify({ ...newProData, price: Number(newProData.price) }) });
-          if (res.ok) { alert("Professional Added!"); setNewProData({ name: '', title: '', category: 'cleaning', price: '', avatar: '' }); fetchProfessionals(); setActiveTab('home'); }
-      } catch (err) { console.error(err); } finally { setIsAddingPro(false); }
-  };
-
   const openPrivateChat = async (booking) => {
-      setActiveChatRoom(booking);
-      setMessageList([]);
-      setActiveTab('chat');
-      try {
-          const res = await fetch(`${backendUrl}/api/chat/${booking._id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } });
-          if (res.ok) setMessageList(await res.json());
-      } catch (err) { console.error(err); }
+      setActiveChatRoom(booking); setMessageList([]); setActiveTab('chat');
+      fetch(`${backendUrl}/api/chat/${booking._id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } })
+        .then(res => res.json()).then(data => setMessageList(data));
   };
 
   const sendMessage = async () => {
-      if (currentMessage !== "" && activeChatRoom) {
-          const timeString = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-          const messageData = { room: activeChatRoom._id, author: user.name, message: currentMessage, time: timeString };
+      if (currentMessage && activeChatRoom) {
+          const messageData = { room: activeChatRoom._id, author: user.name, message: currentMessage, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) };
           await socket.emit('send_message', messageData);
-          setMessageList((list) => [...list, messageData]); 
-          setCurrentMessage(""); 
+          setMessageList((list) => [...list, messageData]); setCurrentMessage(""); 
       }
   };
 
-  const categories = [
-    { id: 'electric', name: 'Electric', icon: 'fa-bolt', color: 'text-orange-500', bg: 'bg-orange-50' },
-    { id: 'plumbing', name: 'Plumbing', icon: 'fa-wrench', color: 'text-teal-600', bg: 'bg-teal-50' },
-    { id: 'cleaning', name: 'Cleaning', icon: 'fa-broom', color: 'text-blue-500', bg: 'bg-blue-50' },
-    { id: 'ac', name: 'AC Repair', icon: 'fa-snowflake', color: 'text-purple-500', bg: 'bg-purple-50' }
-  ];
+  const markNotifsRead = () => {
+      fetch(`${backendUrl}/api/notifications/read`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } });
+      setNotifications(prev => prev.map(n => ({...n, isRead: true})));
+      setShowNotifs(false);
+  };
 
-  const filteredPros = professionals.filter(pro => {
-    if (selectedCategory && pro.category !== selectedCategory) return false;
-    if (searchQuery && !pro.name.toLowerCase().includes(searchQuery.toLowerCase()) && !pro.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    return true;
-  });
+  const categories = [ { id: 'electric', name: 'Electric', icon: 'fa-bolt', color: 'text-orange-500', bg: 'bg-orange-50' }, { id: 'plumbing', name: 'Plumbing', icon: 'fa-wrench', color: 'text-teal-600', bg: 'bg-teal-50' }, { id: 'cleaning', name: 'Cleaning', icon: 'fa-broom', color: 'text-blue-500', bg: 'bg-blue-50' }, { id: 'ac', name: 'AC Repair', icon: 'fa-snowflake', color: 'text-purple-500', bg: 'bg-purple-50' } ];
 
   return (
     <div className="bg-bgLight w-full max-w-md mx-auto h-screen md:h-[850px] md:rounded-[2.5rem] md:shadow-2xl relative overflow-hidden md:border-8 md:border-gray-900 flex flex-col">
@@ -207,10 +166,17 @@ const ClientApp = () => {
             <div className="px-6 pt-10 pb-4 bg-white rounded-b-3xl shadow-sm z-10 relative">
                 <div className="flex justify-between items-center mb-6">
                     <div>
-                        <p className="text-xs text-gray-500 font-medium">Hello, {user?.name?.split(' ')[0] || 'Guest'} 👋</p>
+                        <p className="text-xs text-gray-500 font-medium">Hello, {user?.name?.split(' ')[0]} 👋</p>
                         <div className="flex items-center text-primary font-bold text-lg mt-1"><i className="fas fa-map-marker-alt text-teal-600 mr-2"></i>Kano, NG</div>
                     </div>
-                    <div className="w-10 h-10 bg-teal-100 text-teal-600 font-bold rounded-full flex items-center justify-center">{user?.name?.charAt(0).toUpperCase() || 'G'}</div>
+                    {/* NOTIFICATION BELL */}
+                    <div className="flex items-center gap-3">
+                        <button onClick={() => setShowNotifs(true)} className="relative w-10 h-10 bg-gray-50 rounded-full flex items-center justify-center border border-gray-100">
+                            <i className="far fa-bell text-gray-600"></i>
+                            {unreadCount > 0 && <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse border border-white"></span>}
+                        </button>
+                        <div className="w-10 h-10 bg-teal-100 text-teal-600 font-bold rounded-full flex items-center justify-center">{user?.name?.charAt(0)}</div>
+                    </div>
                 </div>
                 <div className="relative flex items-center">
                     <i className="fas fa-search absolute left-4 text-gray-400 z-10"></i>
@@ -231,7 +197,7 @@ const ClientApp = () => {
                 </div>
                 <div>
                     <h2 className="text-lg font-bold text-primary mb-4">{selectedCategory ? `${categories.find(c => c.id === selectedCategory)?.name} Pros` : 'Top Rated Near You'}</h2>
-                    {loadingPros ? <div className="text-center py-10"><i className="fas fa-spinner fa-spin text-teal-600 text-3xl"></i></div> : filteredPros.map(pro => (
+                    {loadingPros ? <div className="text-center py-10"><i className="fas fa-spinner fa-spin text-teal-600 text-3xl"></i></div> : professionals.map(pro => (
                         <div key={pro._id || pro.id} onClick={() => setViewingProfile(pro)} className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 mb-4 hover:shadow-md transition cursor-pointer">
                             <div className="flex items-center">
                                 <img src={pro.avatar} className="w-16 h-16 rounded-2xl object-cover mr-4" />
@@ -254,24 +220,21 @@ const ClientApp = () => {
           </>
         )}
 
+        {/* ... (Keep Bookings, Chat, Profile identical structure) */}
         {activeTab === 'bookings' && (
           <div className="flex-1 overflow-y-auto px-6 pt-10 pb-28 bg-gray-50">
             <h2 className="text-2xl font-bold text-primary mb-6">My Bookings</h2>
-            {loadingBookings ? <div className="text-center py-20"><i className="fas fa-spinner fa-spin text-teal-600 text-4xl"></i></div> : myBookings.length === 0 ? <p className="text-center text-gray-500 mt-10">No bookings yet.</p> : myBookings.map(booking => {
-                let statusColor = booking.status === 'confirmed' ? 'bg-teal-50 text-teal-600' : booking.status === 'completed' ? 'bg-blue-50 text-blue-600' : booking.status === 'cancelled' ? 'bg-red-50 text-red-500 line-through opacity-70' : 'bg-orange-50 text-orange-500';
+            {myBookings.map(booking => {
+                let statusColor = booking.status === 'confirmed' ? 'bg-teal-50 text-teal-600' : booking.status === 'completed' ? 'bg-blue-50 text-blue-600' : booking.status === 'cancelled' ? 'bg-red-50 text-red-500' : 'bg-orange-50 text-orange-500';
                 return (
-                  <div key={booking._id} className={`bg-white p-5 rounded-3xl shadow-sm border border-gray-100 mb-4 relative ${booking.status === 'cancelled' ? 'opacity-60' : ''}`}>
-                    <div className={`absolute top-0 left-0 w-1 h-full ${booking.status === 'cancelled' ? 'bg-red-500' : 'bg-teal-600'}`}></div>
-                    <div className="flex justify-between items-start border-b border-gray-50 pb-3 mb-3 pl-2">
-                      <div><p className="text-xs text-gray-400 font-medium mb-1">Service with</p><h3 className="font-bold text-primary text-lg">{booking.professionalName}</h3></div>
-                      <div className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase ${statusColor}`}>{booking.status}</div>
-                    </div>
+                  <div key={booking._id} className={`bg-white p-5 rounded-3xl shadow-sm mb-4 relative ${booking.status === 'cancelled' ? 'opacity-60' : ''}`}>
+                    <div className="flex justify-between mb-3 pl-2"><h3 className="font-bold">{booking.professionalName}</h3><div className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase ${statusColor}`}>{booking.status}</div></div>
                     <div className="pl-2">
-                      <p className="text-sm text-gray-600 mb-4"><i className="far fa-calendar-alt w-6 text-teal-600 text-center"></i>{new Date(booking.date).toLocaleDateString()} at {booking.time}</p>
+                      <p className="text-sm text-gray-600 mb-4">{new Date(booking.date).toLocaleDateString()} at {booking.time}</p>
                       {booking.status !== 'cancelled' && (
                           <div className="flex gap-2">
-                              {booking.status === 'pending' && <button onClick={() => handleCancelBooking(booking._id)} className="flex-1 py-2 bg-red-50 text-red-500 text-xs font-bold rounded-xl hover:bg-red-100">Cancel</button>}
-                              <button onClick={() => openPrivateChat(booking)} className="flex-1 py-2 bg-teal-50 text-teal-600 text-xs font-bold rounded-xl hover:bg-teal-100"><i className="far fa-comment-dots mr-1"></i> Message Pro</button>
+                              {booking.status === 'pending' && <button onClick={() => handleCancelBooking(booking._id)} className="flex-1 py-2 bg-red-50 text-red-500 text-xs font-bold rounded-xl">Cancel</button>}
+                              <button onClick={() => openPrivateChat(booking)} className="flex-1 py-2 bg-teal-50 text-teal-600 text-xs font-bold rounded-xl">Message Pro</button>
                           </div>
                       )}
                     </div>
@@ -283,194 +246,82 @@ const ClientApp = () => {
 
         {activeTab === 'chat' && (
           <div className="flex-1 flex flex-col bg-gray-50 pb-20 relative z-30">
-             {activeChatRoom ? (
+             {activeChatRoom && (
                  <>
-                    <div className="px-6 pt-10 pb-4 bg-white border-b border-gray-100 shadow-sm z-10 sticky top-0 flex items-center">
-                        <button onClick={() => setActiveTab('bookings')} className="mr-4 text-gray-400 hover:text-teal-600"><i className="fas fa-chevron-left text-xl"></i></button>
-                        <div>
-                            <h2 className="text-lg font-bold text-primary">{activeChatRoom.professionalName}</h2>
-                            <p className="text-xs text-teal-600 font-medium mt-0.5"><i className="fas fa-lock text-[8px] mr-1"></i> Private Booking Room</p>
-                        </div>
+                    <div className="px-6 pt-10 pb-4 bg-white border-b flex items-center">
+                        <button onClick={() => setActiveTab('bookings')} className="mr-4 text-gray-400"><i className="fas fa-chevron-left"></i></button>
+                        <h2 className="text-lg font-bold">{activeChatRoom.professionalName}</h2>
                     </div>
                     <div className="flex-1 overflow-y-auto px-4 py-6 flex flex-col gap-4">
-                        {messageList.length === 0 ? (
-                            <div className="text-center text-gray-400 mt-10">
-                                <i className="far fa-comments text-4xl mb-3 opacity-50"></i>
-                                <p>No messages here yet.</p>
+                        {messageList.map((msg, idx) => (
+                            <div key={idx} className={`flex flex-col ${msg.author === user.name ? 'items-end' : 'items-start'}`}>
+                                <div className={`px-4 py-3 rounded-2xl max-w-[80%] ${msg.author === user.name ? 'bg-teal-600 text-white rounded-br-none' : 'bg-white rounded-bl-none'}`}><p className="text-sm">{msg.message}</p></div>
+                                <span className="text-[10px] text-gray-400 mt-1">{msg.time}</span>
                             </div>
-                        ) : (
-                            messageList.map((msg, index) => {
-                                const isMe = msg.author === user.name;
-                                return (
-                                    <div key={index} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                                        <div className={`px-4 py-3 rounded-2xl max-w-[80%] ${isMe ? 'bg-teal-600 text-white rounded-br-none shadow-md' : 'bg-white border border-gray-100 text-gray-800 rounded-bl-none shadow-sm'}`}>
-                                            <p className="text-sm">{msg.message}</p>
-                                        </div>
-                                        <div className="flex gap-2 mt-1 text-[10px] text-gray-400 font-medium px-1">
-                                            <span>{msg.time}</span>
-                                            <span>•</span>
-                                            <span>{msg.author}</span>
-                                        </div>
-                                    </div>
-                                );
-                            })
-                        )}
+                        ))}
                         <div ref={chatEndRef} />
                     </div>
-                    <div className="absolute bottom-[72px] left-0 w-full bg-white border-t border-gray-100 p-4">
-                        <div className="flex items-center gap-3">
-                            <input type="text" value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} onKeyPress={(e) => { e.key === "Enter" && sendMessage(); }} placeholder="Type a message..." className="flex-1 bg-gray-100 p-3 rounded-xl text-sm outline-none focus:ring-2 focus:ring-teal-600" />
-                            <button onClick={sendMessage} className="bg-teal-600 text-white w-12 h-12 rounded-xl flex items-center justify-center hover:bg-teal-700 transition shadow-md"><i className="fas fa-paper-plane"></i></button>
-                        </div>
+                    <div className="absolute bottom-[72px] w-full bg-white p-4 flex gap-3">
+                        <input type="text" value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} onKeyPress={(e) => e.key === "Enter" && sendMessage()} className="flex-1 bg-gray-100 p-3 rounded-xl text-sm" placeholder="Type a message..." />
+                        <button onClick={sendMessage} className="bg-teal-600 text-white w-12 rounded-xl"><i className="fas fa-paper-plane"></i></button>
                     </div>
                  </>
-             ) : (
-                 <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-                     <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4"><i className="far fa-comment-dots text-3xl text-gray-400"></i></div>
-                     <h2 className="text-xl font-bold text-primary mb-2">No Active Chat</h2>
-                     <p className="text-gray-500 text-sm mb-6">Select a booking to start messaging the professional.</p>
-                     <button onClick={() => setActiveTab('bookings')} className="bg-teal-600 text-white font-bold px-6 py-3 rounded-xl">Go to My Bookings</button>
-                 </div>
              )}
           </div>
         )}
 
-        {activeTab === 'admin' && (
-          <div className="flex-1 overflow-y-auto bg-gray-900 flex flex-col h-full">
-            <div className="px-6 pt-10 pb-4 flex justify-between items-center sticky top-0 bg-gray-900 z-10 border-b border-gray-800">
-                <h2 className="text-2xl font-bold text-white"><i className="fas fa-shield-alt mr-2 text-teal-400"></i>Admin</h2>
-                <button onClick={() => setActiveTab('profile')} className="text-gray-400 hover:text-white bg-gray-800 px-3 py-1 rounded-lg text-xs font-bold">Close</button>
-            </div>
-            <div className="flex px-6 mt-4 mb-6">
-                <button onClick={() => setAdminTab('bookings')} className={`flex-1 py-3 text-sm font-bold rounded-l-xl border border-gray-700 ${adminTab === 'bookings' ? 'bg-teal-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>All Bookings</button>
-                <button onClick={() => setAdminTab('addPro')} className={`flex-1 py-3 text-sm font-bold rounded-r-xl border border-gray-700 border-l-0 ${adminTab === 'addPro' ? 'bg-teal-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}><i className="fas fa-user-plus mr-2"></i>Add Pro</button>
-            </div>
-            <div className="px-6 pb-28">
-                {adminTab === 'bookings' && (
-                    loadingAdmin ? <div className="text-center py-10"><i className="fas fa-spinner fa-spin text-teal-400 text-4xl"></i></div> : adminBookings.map(booking => {
-                        return (
-                        <div key={booking._id} className="bg-gray-800 p-5 rounded-2xl mb-4 border border-gray-700">
-                            <div className="flex justify-between items-start mb-3 border-b border-gray-700 pb-3">
-                                <div><p className="text-xs text-gray-400">Client: <strong className="text-white">{booking.clientName}</strong></p><p className="text-xs text-gray-400">Pro: <strong className="text-white">{booking.professionalName}</strong></p></div>
-                                <div className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-gray-700 text-white">{booking.status}</div>
-                            </div>
-                            {booking.status !== 'cancelled' && (
-                                <div className="flex gap-2 mt-4">
-                                    {booking.status === 'pending' && <button onClick={() => handleAdminStatusUpdate(booking._id, 'confirmed')} className="flex-1 bg-teal-600 text-white text-xs py-2 rounded-lg font-bold">Confirm</button>}
-                                    {booking.status === 'confirmed' && <button onClick={() => handleAdminStatusUpdate(booking._id, 'completed')} className="flex-1 bg-blue-600 text-white text-xs py-2 rounded-lg font-bold">Complete</button>}
-                                    <button onClick={() => handleAdminStatusUpdate(booking._id, 'cancelled')} className="flex-1 bg-gray-700 text-red-400 text-xs py-2 rounded-lg font-bold">Cancel</button>
-                                </div>
-                            )}
-                        </div>
-                        );
-                    })
-                )}
-                {adminTab === 'addPro' && (
-                    <form onSubmit={handleAddProfessional} className="bg-gray-800 p-6 rounded-2xl border border-gray-700 flex flex-col gap-4">
-                        <div><label className="text-xs font-bold text-gray-400">Full Name</label><input type="text" required value={newProData.name} onChange={e => setNewProData({...newProData, name: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-xl mt-1" /></div>
-                        <div><label className="text-xs font-bold text-gray-400">Job Title</label><input type="text" required value={newProData.title} onChange={e => setNewProData({...newProData, title: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-xl mt-1" /></div>
-                        <div><label className="text-xs font-bold text-gray-400">Category</label><select value={newProData.category} onChange={e => setNewProData({...newProData, category: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-xl mt-1"><option value="cleaning">Cleaning</option><option value="electric">Electric</option><option value="plumbing">Plumbing</option><option value="ac">AC Repair</option></select></div>
-                        <div><label className="text-xs font-bold text-gray-400">Hourly Price (₦)</label><input type="number" required value={newProData.price} onChange={e => setNewProData({...newProData, price: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-xl mt-1" /></div>
-                        <div><label className="text-xs font-bold text-gray-400">Avatar Image URL</label><input type="text" value={newProData.avatar} onChange={e => setNewProData({...newProData, avatar: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-xl mt-1" /></div>
-                        <button type="submit" disabled={isAddingPro} className="w-full bg-teal-600 text-white font-bold py-4 rounded-xl mt-4">{isAddingPro ? 'Adding...' : 'Add Professional'}</button>
-                    </form>
-                )}
-            </div>
-          </div>
-        )}
-
-        {/* --- PROFILE TAB --- */}
         {activeTab === 'profile' && (
-          <div className="flex-1 overflow-y-auto px-6 pt-10 pb-28 bg-gray-50">
-            <h2 className="text-2xl font-bold text-primary mb-6">My Account</h2>
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6 text-center">
-              <div className="w-24 h-24 bg-teal-100 text-teal-600 rounded-full flex items-center justify-center text-4xl font-bold mx-auto mb-4 border-4 border-white shadow-md">{user?.name?.charAt(0).toUpperCase() || 'G'}</div>
-              <h3 className="font-bold text-xl text-primary">{user?.name || 'User'}</h3>
-              <p className="text-gray-500 text-sm mb-6">{user?.email || ''}</p>
-              <button onClick={logout} className="bg-red-50 text-red-500 font-bold py-3 px-8 rounded-xl hover:bg-red-100 transition w-full">Log Out</button>
-            </div>
-            
-            {/* ONLY SHOW ADMIN DASHBOARD IF USER IS ADMIN */}
-            {user?.role === 'admin' && (
-                <div onClick={() => setActiveTab('admin')} className="bg-gray-900 p-4 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-gray-800 transition shadow-lg mt-4">
-                    <div className="flex items-center">
-                        <div className="w-10 h-10 bg-gray-800 rounded-xl flex items-center justify-center mr-4"><i className="fas fa-shield-alt text-teal-400"></i></div>
-                        <div><h4 className="text-white font-bold text-sm">Admin Dashboard</h4><p className="text-gray-400 text-xs">Manage platform & pros</p></div>
-                    </div>
-                    <i className="fas fa-chevron-right text-gray-500 text-sm"></i>
-                </div>
-            )}
+          <div className="flex-1 overflow-y-auto px-6 pt-10 bg-gray-50 text-center">
+            <h2 className="text-2xl font-bold mb-6">My Account</h2>
+            <div className="bg-white p-6 rounded-3xl mb-6 shadow-sm"><div className="w-24 h-24 bg-teal-100 text-teal-600 rounded-full mx-auto mb-4 flex items-center justify-center text-4xl font-bold">{user?.name?.charAt(0)}</div><h3 className="font-bold text-xl">{user?.name}</h3><button onClick={logout} className="bg-red-50 text-red-500 font-bold py-3 mt-6 rounded-xl w-full">Log Out</button></div>
           </div>
         )}
 
-        {/* ---------------- OVERLAYS ---------------- */}
-        {bookingPro && (
+        {/* NOTIFICATIONS MODAL OVERLAY */}
+        {showNotifs && (
             <div className="absolute inset-0 bg-white z-50 flex flex-col animate-[slideUp_0.3s_ease-out]">
                 <div className="flex justify-between items-center p-6 border-b border-gray-100">
-                    <h2 className="font-bold text-xl text-primary">Book Service</h2>
-                    <button onClick={() => { setBookingPro(null); setIsBookingSuccess(false); }} className="bg-gray-100 h-10 w-10 rounded-full"><i className="fas fa-times"></i></button>
+                    <h2 className="font-bold text-xl text-primary">Notifications</h2>
+                    <button onClick={markNotifsRead} className="bg-gray-100 h-10 w-10 rounded-full"><i className="fas fa-times"></i></button>
                 </div>
-                {isBookingSuccess ? (
-                    <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-                        <div className="w-24 h-24 bg-teal-50 rounded-full flex items-center justify-center mb-6"><i className="fas fa-check text-4xl text-teal-600"></i></div>
-                        <h2 className="text-2xl font-bold text-primary mb-2">Booking Confirmed!</h2>
-                        <button onClick={() => { setBookingPro(null); setIsBookingSuccess(false); setActiveTab('bookings'); }} className="w-full bg-primary text-white font-bold py-4 rounded-2xl mt-8">View My Bookings</button>
-                    </div>
-                ) : (
-                    <form onSubmit={handleBookingSubmit} className="flex-1 overflow-y-auto p-6 flex flex-col pb-28">
-                        <label className="text-sm font-bold text-primary mb-2">Select Date</label>
-                        <input type="date" required className="w-full bg-gray-50 border border-gray-200 p-4 rounded-xl mb-6 outline-none focus:ring-2 focus:ring-teal-600" value={bookingData.date} onChange={e => setBookingData({...bookingData, date: e.target.value})} />
-                        <label className="text-sm font-bold text-primary mb-2">Select Time</label>
-                        <div className="grid grid-cols-3 gap-3 mb-6">
-                            {['10:00 AM', '1:00 PM', '4:00 PM'].map(time => (
-                                <div key={time} onClick={() => setBookingData({...bookingData, time})} className={`text-center py-3 rounded-xl text-sm font-medium cursor-pointer ${bookingData.time === time ? 'bg-primary text-white' : 'bg-gray-50 text-gray-600'}`}>{time}</div>
-                            ))}
+                <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+                    {notifications.length === 0 ? <p className="text-center text-gray-500 mt-10">No new notifications</p> : notifications.map(n => (
+                        <div key={n._id} className={`p-4 mb-3 rounded-2xl shadow-sm ${n.isRead ? 'bg-white border border-gray-100' : 'bg-teal-50 border border-teal-100'}`}>
+                            <h4 className="font-bold text-sm text-primary mb-1">{n.title}</h4>
+                            <p className="text-xs text-gray-600">{n.message}</p>
+                            <p className="text-[10px] text-gray-400 mt-2">{new Date(n.createdAt).toLocaleString()}</p>
                         </div>
-                        <label className="text-sm font-bold text-primary mb-2">Address</label>
-                        <textarea required className="w-full bg-gray-50 border border-gray-200 p-4 rounded-xl mb-6 h-28 outline-none focus:ring-2 focus:ring-teal-600 resize-none" value={bookingData.address} onChange={e => setBookingData({...bookingData, address: e.target.value})}></textarea>
-                        <button type="submit" disabled={isSubmitting} className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl mt-auto">{isSubmitting ? 'Confirming...' : 'Confirm Booking'}</button>
-                    </form>
-                )}
+                    ))}
+                </div>
             </div>
         )}
 
+        {/* BOOKING/PROFILE OVERLAYS... */}
+        {bookingPro && (
+            <div className="absolute inset-0 bg-white z-50 flex flex-col">
+                <div className="flex justify-between items-center p-6 border-b"><h2 className="font-bold text-xl">Book Service</h2><button onClick={() => { setBookingPro(null); setIsBookingSuccess(false); }} className="bg-gray-100 h-10 w-10 rounded-full"><i className="fas fa-times"></i></button></div>
+                {isBookingSuccess ? (
+                    <div className="flex-1 flex flex-col items-center justify-center p-6"><h2 className="text-2xl font-bold mb-2">Booking Confirmed!</h2><button onClick={() => { setBookingPro(null); setIsBookingSuccess(false); setActiveTab('bookings'); }} className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl mt-8">View Bookings</button></div>
+                ) : (
+                    <form onSubmit={handleBookingSubmit} className="flex-1 p-6 flex flex-col"><input type="date" required className="w-full bg-gray-50 p-4 rounded-xl mb-6" value={bookingData.date} onChange={e => setBookingData({...bookingData, date: e.target.value})} /><div className="grid grid-cols-3 gap-3 mb-6">{['10:00 AM', '1:00 PM', '4:00 PM'].map(time => <div key={time} onClick={() => setBookingData({...bookingData, time})} className={`text-center py-3 rounded-xl text-sm font-medium cursor-pointer ${bookingData.time === time ? 'bg-teal-600 text-white' : 'bg-gray-50'}`}>{time}</div>)}</div><textarea required className="w-full bg-gray-50 p-4 rounded-xl mb-6 h-28" value={bookingData.address} onChange={e => setBookingData({...bookingData, address: e.target.value})}></textarea><button type="submit" className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl mt-auto">Confirm Booking</button></form>
+                )}
+            </div>
+        )}
         {viewingProfile && !bookingPro && (
-             <div className="absolute inset-0 bg-white z-40 flex flex-col animate-[slideLeft_0.3s_ease-out]">
-                 <div className="flex justify-between items-center p-6 bg-white border-b border-gray-100">
-                     <button onClick={() => setViewingProfile(null)} className="h-10 w-10 rounded-full bg-gray-50 text-gray-600"><i className="fas fa-chevron-left"></i></button>
-                 </div>
-                 <div className="flex-1 overflow-y-auto pb-28">
-                     <img src={viewingProfile.avatar} className="w-28 h-28 rounded-full border-4 border-white shadow-lg mx-auto mt-6 object-cover" />
-                     <div className="p-6 text-center">
-                         <h1 className="text-2xl font-bold text-primary">{viewingProfile.name}</h1>
-                         <p className="text-teal-600 font-medium mb-4">{viewingProfile.title}</p>
-                         <button onClick={() => setBookingPro(viewingProfile)} className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl shadow-lg mt-4">Book Service Now</button>
-                     </div>
-                 </div>
+             <div className="absolute inset-0 bg-white z-40 flex flex-col">
+                 <div className="p-6 border-b"><button onClick={() => setViewingProfile(null)} className="h-10 w-10 rounded-full bg-gray-50"><i className="fas fa-chevron-left"></i></button></div>
+                 <div className="flex-1 p-6 text-center"><img src={viewingProfile.avatar} className="w-28 h-28 rounded-full mx-auto mt-6" /><h1 className="text-2xl font-bold mt-4">{viewingProfile.name}</h1><button onClick={() => setBookingPro(viewingProfile)} className="w-full bg-teal-600 text-white font-bold py-4 rounded-2xl mt-8">Book Service</button></div>
              </div>
         )}
 
-        <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-6 py-4 flex justify-between items-center pb-8 z-20">
-            {['home', 'bookings', 'chat', 'profile'].map((tab, idx) => {
-              const icons = ['fa-home', 'fa-calendar-alt', 'fa-comment-dots', 'fa-user'];
-              const isSolid = (tab === 'home' && activeTab !== 'admin');
-              return (
-                <div key={tab} onClick={() => setActiveTab(tab)} className={`flex flex-col items-center cursor-pointer ${activeTab === tab ? 'text-teal-600' : 'text-gray-400'}`}>
-                    <i className={`${isSolid ? 'fas' : 'far'} ${icons[idx]} text-xl mb-1`}></i>
-                    <span className="text-[10px] font-bold mt-1 capitalize">{tab}</span>
-                </div>
-              );
-            })}
+        <div className="absolute bottom-0 w-full bg-white border-t px-6 py-4 flex justify-between z-20">
+            {['home', 'bookings', 'chat', 'profile'].map((tab, idx) => (
+                <div key={tab} onClick={() => setActiveTab(tab)} className={`flex flex-col items-center cursor-pointer ${activeTab === tab ? 'text-teal-600' : 'text-gray-400'}`}><i className={`fas ${['fa-home', 'fa-calendar-alt', 'fa-comment-dots', 'fa-user'][idx]} text-xl mb-1`}></i><span className="text-[10px] font-bold">{tab}</span></div>
+            ))}
         </div>
-
-        <style>{`
-          @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-          @keyframes slideLeft { from { transform: translateX(100%); } to { transform: translateX(0); } }
-        `}</style>
     </div>
   );
 };
-
 
 // ==========================================
 // PROFESSIONAL DASHBOARD
@@ -479,48 +330,43 @@ const ProfessionalApp = () => {
     const { user, logout } = useAuth();
     const [activeTab, setActiveTab] = useState('jobs');
     const [jobs, setJobs] = useState([]);
-    const [loading, setLoading] = useState(true);
-
+    
     const [activeChatRoom, setActiveChatRoom] = useState(null);
     const [messageList, setMessageList] = useState([]);
     const [currentMessage, setCurrentMessage] = useState('');
     const chatEndRef = useRef(null);
 
-    useEffect(() => {
-        if (activeTab === 'jobs') {
-            fetch(`${backendUrl}/api/pro/bookings`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } })
-            .then(res => res.json())
-            .then(data => { setJobs(data); setLoading(false); })
-            .catch(() => setLoading(false));
-        }
-    }, [activeTab]);
+    // NOTIFICATION STATE
+    const [notifications, setNotifications] = useState([]);
+    const [showNotifs, setShowNotifs] = useState(false);
+    const unreadCount = notifications.filter(n => !n.isRead).length;
 
     useEffect(() => {
-        const receiveMessageHandler = (data) => setMessageList((list) => [...list, data]);
-        socket.on('receive_message', receiveMessageHandler);
-        return () => socket.off('receive_message', receiveMessageHandler);
+        fetch(`${backendUrl}/api/pro/bookings`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } })
+            .then(res => res.json()).then(data => setJobs(data));
+
+        fetch(`${backendUrl}/api/notifications`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } })
+            .then(res => res.json()).then(data => setNotifications(data));
+
+        socket.on('receive_message', (data) => setMessageList((list) => [...list, data]));
+        socket.on('new_notification', (notif) => setNotifications((prev) => [notif, ...prev]));
+
+        return () => { socket.off('receive_message'); socket.off('new_notification'); };
     }, []);
 
     useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messageList]);
 
     const openChat = async (job) => {
-        setActiveChatRoom(job);
-        setMessageList([]);
-        setActiveTab('chat');
-        socket.emit('join_room', job._id);
-        try {
-            const res = await fetch(`${backendUrl}/api/chat/${job._id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } });
-            if (res.ok) setMessageList(await res.json());
-        } catch (err) {}
+        setActiveChatRoom(job); setMessageList([]); setActiveTab('chat'); socket.emit('join_room', job._id);
+        fetch(`${backendUrl}/api/chat/${job._id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } })
+            .then(res => res.json()).then(data => setMessageList(data));
     };
 
     const sendMessage = async () => {
-        if (currentMessage !== "" && activeChatRoom) {
-            const timeString = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-            const messageData = { room: activeChatRoom._id, author: user.name, message: currentMessage, time: timeString };
-            await socket.emit('send_message', messageData);
-            setMessageList((list) => [...list, messageData]); 
-            setCurrentMessage(""); 
+        if (currentMessage && activeChatRoom) {
+            const msgData = { room: activeChatRoom._id, author: user.name, message: currentMessage, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) };
+            await socket.emit('send_message', msgData);
+            setMessageList(list => [...list, msgData]); setCurrentMessage(""); 
         }
     };
 
@@ -529,26 +375,31 @@ const ProfessionalApp = () => {
         if (res.ok) setJobs(prev => prev.map(j => j._id === jobId ? { ...j, status } : j));
     };
 
+    const markNotifsRead = () => {
+        fetch(`${backendUrl}/api/notifications/read`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } });
+        setNotifications(prev => prev.map(n => ({...n, isRead: true})));
+        setShowNotifs(false);
+    };
+
     return (
-        <div className="bg-gray-900 w-full max-w-md mx-auto h-screen md:h-[850px] md:rounded-[2.5rem] md:shadow-2xl relative overflow-hidden flex flex-col text-white">
+        <div className="bg-gray-900 w-full max-w-md mx-auto h-screen md:h-[850px] relative flex flex-col text-white md:rounded-[2.5rem] md:shadow-2xl">
             {activeTab === 'jobs' && (
                 <div className="flex-1 overflow-y-auto px-6 pt-10 pb-28">
-                    <h2 className="text-2xl font-bold mb-2">My Jobs</h2>
-                    <p className="text-gray-400 text-sm mb-6">Manage your incoming requests.</p>
-                    
-                    {loading ? <p>Loading...</p> : jobs.length === 0 ? <p className="text-gray-500 text-center mt-10">No jobs assigned to you yet.</p> : jobs.map(job => (
-                        <div key={job._id} className="bg-gray-800 p-5 rounded-2xl mb-4 border border-gray-700">
-                            <div className="flex justify-between mb-3 border-b border-gray-700 pb-3">
-                                <div><p className="text-xs text-gray-400">Client</p><h3 className="font-bold">{job.clientName}</h3></div>
-                                <div className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-gray-700">{job.status}</div>
-                            </div>
-                            <p className="text-sm text-gray-300 mb-2"><i className="far fa-calendar-alt text-teal-400 mr-2"></i>{new Date(job.date).toLocaleDateString()} at {job.time}</p>
-                            <p className="text-sm text-gray-300 mb-4"><i className="fas fa-map-marker-alt text-teal-400 mr-2"></i>{job.address}</p>
-                            
-                            <div className="flex gap-2">
-                                <button onClick={() => openChat(job)} className="flex-1 py-2 bg-gray-700 text-white text-xs font-bold rounded-lg"><i className="far fa-comment-dots"></i> Chat</button>
-                                {job.status === 'pending' && <button onClick={() => updateJobStatus(job._id, 'confirmed')} className="flex-1 py-2 bg-teal-600 text-white text-xs font-bold rounded-lg">Accept</button>}
-                                {job.status === 'confirmed' && <button onClick={() => updateJobStatus(job._id, 'completed')} className="flex-1 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg">Complete</button>}
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-2xl font-bold">My Jobs</h2>
+                        <button onClick={() => setShowNotifs(true)} className="relative w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center">
+                            <i className="far fa-bell text-gray-400"></i>
+                            {unreadCount > 0 && <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-teal-400 rounded-full animate-pulse"></span>}
+                        </button>
+                    </div>
+                    {jobs.map(job => (
+                        <div key={job._id} className="bg-gray-800 p-5 rounded-2xl mb-4">
+                            <div className="flex justify-between mb-3 border-b border-gray-700 pb-3"><h3 className="font-bold">{job.clientName}</h3><div className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-gray-700">{job.status}</div></div>
+                            <p className="text-sm text-gray-300 mb-2">{new Date(job.date).toLocaleDateString()} at {job.time}</p>
+                            <div className="flex gap-2 mt-4">
+                                <button onClick={() => openChat(job)} className="flex-1 py-2 bg-gray-700 text-xs font-bold rounded-lg">Chat</button>
+                                {job.status === 'pending' && <button onClick={() => updateJobStatus(job._id, 'confirmed')} className="flex-1 py-2 bg-teal-600 text-xs font-bold rounded-lg">Accept</button>}
+                                {job.status === 'confirmed' && <button onClick={() => updateJobStatus(job._id, 'completed')} className="flex-1 py-2 bg-blue-600 text-xs font-bold rounded-lg">Complete</button>}
                             </div>
                         </div>
                     ))}
@@ -556,58 +407,49 @@ const ProfessionalApp = () => {
             )}
 
             {activeTab === 'chat' && (
-                <div className="flex-1 flex flex-col bg-gray-900 pb-20 z-30">
-                    {activeChatRoom ? (
+                <div className="flex-1 flex flex-col pb-20 z-30">
+                    {activeChatRoom && (
                         <>
-                            <div className="px-6 pt-10 pb-4 border-b border-gray-800 flex items-center sticky top-0 bg-gray-900">
-                                <button onClick={() => setActiveTab('jobs')} className="mr-4 text-gray-400"><i className="fas fa-chevron-left"></i></button>
-                                <div><h2 className="text-lg font-bold">{activeChatRoom.clientName}</h2><p className="text-xs text-teal-400">Client Chat</p></div>
-                            </div>
+                            <div className="px-6 pt-10 pb-4 border-b border-gray-800 flex items-center"><button onClick={() => setActiveTab('jobs')} className="mr-4 text-gray-400"><i className="fas fa-chevron-left"></i></button><h2 className="text-lg font-bold">{activeChatRoom.clientName}</h2></div>
                             <div className="flex-1 overflow-y-auto px-4 py-6 flex flex-col gap-4">
-                                {messageList.map((msg, index) => {
-                                    const isMe = msg.author === user.name;
-                                    return (
-                                        <div key={index} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                                            <div className={`px-4 py-3 rounded-2xl max-w-[80%] ${isMe ? 'bg-teal-600 text-white rounded-br-none' : 'bg-gray-800 text-gray-200 rounded-bl-none'}`}>
-                                                <p className="text-sm">{msg.message}</p>
-                                            </div>
-                                            <span className="text-[10px] text-gray-500 mt-1 px-1">{msg.time}</span>
-                                        </div>
-                                    );
-                                })}
+                                {messageList.map((msg, idx) => (
+                                    <div key={idx} className={`flex flex-col ${msg.author === user.name ? 'items-end' : 'items-start'}`}><div className={`px-4 py-3 rounded-2xl max-w-[80%] ${msg.author === user.name ? 'bg-teal-600 rounded-br-none' : 'bg-gray-800 rounded-bl-none'}`}><p className="text-sm">{msg.message}</p></div></div>
+                                ))}
                                 <div ref={chatEndRef} />
                             </div>
-                            <div className="absolute bottom-[72px] w-full p-4 border-t border-gray-800 bg-gray-900 flex gap-2">
-                                <input type="text" value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} onKeyPress={(e) => e.key === "Enter" && sendMessage()} className="flex-1 bg-gray-800 p-3 rounded-xl outline-none text-sm text-white" placeholder="Message client..." />
-                                <button onClick={sendMessage} className="bg-teal-600 w-12 h-12 rounded-xl text-white"><i className="fas fa-paper-plane"></i></button>
-                            </div>
+                            <div className="absolute bottom-[72px] w-full p-4 border-t border-gray-800 flex gap-2"><input type="text" value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} onKeyPress={(e) => e.key === "Enter" && sendMessage()} className="flex-1 bg-gray-800 p-3 rounded-xl text-sm" placeholder="Message..." /><button onClick={sendMessage} className="bg-teal-600 w-12 rounded-xl"><i className="fas fa-paper-plane"></i></button></div>
                         </>
-                    ) : (
-                        <div className="flex-1 flex items-center justify-center p-6 text-center"><p className="text-gray-500">Select a job to chat with the client.</p></div>
                     )}
                 </div>
             )}
 
             {activeTab === 'profile' && (
-                <div className="flex-1 p-6 pt-10 text-center">
-                    <h2 className="text-2xl font-bold mb-6">Pro Account</h2>
-                    <div className="w-24 h-24 bg-gray-800 rounded-full mx-auto mb-4 flex items-center justify-center text-3xl font-bold text-teal-400 border-2 border-teal-500">{user?.name?.charAt(0)}</div>
-                    <h3 className="font-bold text-xl">{user?.name}</h3>
-                    <p className="text-gray-400 mb-6">{user?.email}</p>
-                    <button onClick={logout} className="w-full bg-red-500/20 text-red-400 py-3 rounded-xl font-bold">Log Out</button>
+                <div className="flex-1 p-6 pt-10 text-center"><h2 className="text-2xl font-bold mb-6">Pro Account</h2><div className="w-24 h-24 bg-gray-800 rounded-full mx-auto mb-4 flex items-center justify-center text-3xl font-bold text-teal-400">{user?.name?.charAt(0)}</div><h3 className="font-bold text-xl">{user?.name}</h3><button onClick={logout} className="w-full bg-red-500/20 text-red-400 py-3 rounded-xl mt-6">Log Out</button></div>
+            )}
+
+            {/* NOTIFICATIONS MODAL OVERLAY */}
+            {showNotifs && (
+                <div className="absolute inset-0 bg-gray-900 z-50 flex flex-col animate-[slideUp_0.3s_ease-out]">
+                    <div className="flex justify-between items-center p-6 border-b border-gray-800">
+                        <h2 className="font-bold text-xl">Notifications</h2>
+                        <button onClick={markNotifsRead} className="bg-gray-800 h-10 w-10 rounded-full"><i className="fas fa-times"></i></button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4">
+                        {notifications.length === 0 ? <p className="text-center text-gray-500 mt-10">No new notifications</p> : notifications.map(n => (
+                            <div key={n._id} className={`p-4 mb-3 rounded-2xl ${n.isRead ? 'bg-gray-800 border border-gray-700' : 'bg-gray-800 border border-teal-500'}`}>
+                                <h4 className={`font-bold text-sm mb-1 ${n.isRead ? 'text-gray-300' : 'text-teal-400'}`}>{n.title}</h4>
+                                <p className="text-xs text-gray-400">{n.message}</p>
+                                <p className="text-[10px] text-gray-600 mt-2">{new Date(n.createdAt).toLocaleString()}</p>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
 
-            <div className="absolute bottom-0 w-full border-t border-gray-800 bg-gray-900 px-6 py-4 flex justify-between pb-8 z-20">
-                {['jobs', 'chat', 'profile'].map((tab, idx) => {
-                  const icons = ['fa-briefcase', 'fa-comment-dots', 'fa-user'];
-                  return (
-                    <div key={tab} onClick={() => setActiveTab(tab)} className={`flex flex-col items-center cursor-pointer ${activeTab === tab ? 'text-teal-400' : 'text-gray-600'}`}>
-                        <i className={`fas ${icons[idx]} text-xl mb-1`}></i>
-                        <span className="text-[10px] font-bold capitalize">{tab}</span>
-                    </div>
-                  );
-                })}
+            <div className="absolute bottom-0 w-full border-t border-gray-800 px-6 py-4 flex justify-between z-20">
+                {['jobs', 'chat', 'profile'].map((tab, idx) => (
+                    <div key={tab} onClick={() => setActiveTab(tab)} className={`flex flex-col items-center cursor-pointer ${activeTab === tab ? 'text-teal-400' : 'text-gray-600'}`}><i className={`fas ${['fa-briefcase', 'fa-comment-dots', 'fa-user'][idx]} text-xl mb-1`}></i><span className="text-[10px] font-bold">{tab}</span></div>
+                ))}
             </div>
         </div>
     );
@@ -618,6 +460,12 @@ const ProfessionalApp = () => {
 // ==========================================
 const AppController = () => {
   const { user, loading } = useAuth();
+  
+  useEffect(() => {
+      // 1. Tell the server who we are for Push Notifications!
+      if (user) socket.emit('register_user', user.id);
+  }, [user]);
+
   if (loading) return <div className="h-screen bg-gray-200 flex items-center justify-center"><i className="fas fa-circle-notch fa-spin text-teal-600 text-4xl"></i></div>;
   if (!user) return <AuthScreen />;
   
