@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 // Auto-clean the URL to guarantee there are no trailing slashes causing HTML errors
-let rawUrl = import.meta.env.VITE_BACKEND_URL || 'https://service-app-backend-121o.onrender.com';
+let rawUrl = import.meta.env.VITE_BACKEND_URL || 'https://servly-app-icy0.onrender.com';
 const backendUrl = rawUrl.replace(/\/$/, "");
 
 // ==========================================
