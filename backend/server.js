@@ -40,12 +40,10 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/servly', {
 })
 .catch(err => console.log('❌ MongoDB Connection Error:', err));
 
-
 // --- 3. Simple Test Route ---
 app.get('/', (req, res) => {
-    res.send('Servly API is awake and running securely with MongoDB!');
+    res.send('Servly API is awake, connected to MongoDB, and ready!');
 });
-
 
 // ==========================================
 // 4. AUTHENTICATION ROUTES
@@ -98,9 +96,8 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-
 // ==========================================
-// 5. PROFESSIONALS ROUTE (From MongoDB)
+// 5. PROFESSIONALS ROUTE
 // ==========================================
 app.get('/api/professionals', async (req, res) => {
     try {
@@ -112,9 +109,8 @@ app.get('/api/professionals', async (req, res) => {
     }
 });
 
-
 // ==========================================
-// 6. BOOKINGS ROUTES (Protected & Saved to MongoDB)
+// 6. BOOKINGS ROUTES
 // ==========================================
 
 // POST a new booking
@@ -147,6 +143,29 @@ app.get('/api/bookings', auth, async (req, res) => {
     } catch (error) {
         console.error("Fetch Bookings Error:", error);
         res.status(500).json({ message: 'Server error fetching bookings' });
+    }
+});
+
+// CANCEL a booking (PATCH request)
+app.patch('/api/bookings/:id/cancel', auth, async (req, res) => {
+    try {
+        const booking = await Booking.findOne({ _id: req.params.id, userId: req.user.id });
+        
+        if (!booking) {
+            return res.status(404).json({ message: 'Booking not found' });
+        }
+
+        if (booking.status !== 'pending') {
+            return res.status(400).json({ message: 'Only pending bookings can be cancelled' });
+        }
+
+        booking.status = 'cancelled';
+        await booking.save();
+
+        res.json({ message: 'Booking cancelled successfully', booking });
+    } catch (error) {
+        console.error("Cancel Booking Error:", error);
+        res.status(500).json({ message: 'Server error cancelling booking' });
     }
 });
 

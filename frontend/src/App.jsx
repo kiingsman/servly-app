@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
-// Auto-clean the URL to guarantee there are no trailing slashes causing HTML errors
 let rawUrl = import.meta.env.VITE_BACKEND_URL || 'https://servly-app-icy0.onrender.com';
 const backendUrl = rawUrl.replace(/\/$/, "");
 
@@ -36,13 +35,8 @@ const AuthScreen = () => {
       const isJson = contentType.includes('application/json');
       const data = isJson ? await res.json() : await res.text();
 
-      if (!res.ok) {
-         throw new Error(isJson ? (data.message || 'Something went wrong') : 'Server returned an invalid format. Please check the backend URL.');
-      }
-
-      if (!isJson) {
-         throw new Error('Server returned HTML instead of JSON. The backend URL might be incorrect.');
-      }
+      if (!res.ok) throw new Error(isJson ? (data.message || 'Something went wrong') : 'Server returned an invalid format.');
+      if (!isJson) throw new Error('Server returned HTML instead of JSON.');
 
       login(data.user, data.token);
     } catch (err) {
@@ -117,77 +111,76 @@ const MainApp = () => {
   const [isBookingSuccess, setIsBookingSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch all professionals (Public Route - No token needed)
+  // Fetch all professionals
   useEffect(() => {
     fetch(`${backendUrl}/api/professionals`)
-      .then(res => {
-         const contentType = res.headers.get('content-type');
-         if (!contentType || !contentType.includes('application/json')) {
-             throw new TypeError("Oops, we haven't got JSON!");
-         }
-         return res.json();
-      })
+      .then(res => res.json())
       .then(data => { setProfessionals(data); setLoadingPros(false); })
       .catch(err => { console.error(err); setLoadingPros(false); });
   }, []);
 
-  // Fetch ONLY this user's bookings (Protected Route - Token Required!)
+  // Fetch user's bookings
   useEffect(() => {
     if (activeTab === 'bookings') {
       setLoadingBookings(true);
       fetch(`${backendUrl}/api/bookings`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } // <-- SEND TOKEN
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }
       })
         .then(res => {
-            if (res.status === 401) {
-               logout();
-               throw new Error("Session expired.");
-            }
-            const contentType = res.headers.get('content-type');
-            if (!contentType || !contentType.includes('application/json')) throw new TypeError("Not JSON");
+            if (res.status === 401) { logout(); throw new Error("Session expired."); }
             return res.json();
         })
         .then(data => { setMyBookings(data); setLoadingBookings(false); })
         .catch(err => { console.error(err); setLoadingBookings(false); });
     }
-  }, [activeTab, logout]); // Removed backendUrl from dependencies
+  }, [activeTab, logout]);
 
-  // Create a new booking (Protected Route - Token Required!)
+  // Create booking
   const handleBookingSubmit = (e) => {
     e.preventDefault();
     setIsSubmitting(true);
-    const token = localStorage.getItem('servly_token');
-
     const payload = {
       professionalId: bookingPro._id || bookingPro.id,
       professionalName: bookingPro.name,
-      date: bookingData.date,
-      time: bookingData.time,
-      address: bookingData.address,
+      date: bookingData.date, time: bookingData.time, address: bookingData.address,
       totalPrice: bookingPro.price
     };
 
     fetch(`${backendUrl}/api/bookings`, {
       method: 'POST',
-      headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-      },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` },
       body: JSON.stringify(payload)
     })
-    .then(res => {
-        if (res.status === 401) {
-            logout();
-            throw new Error("Session expired. Please log in again.");
-        }
-        return res.json();
-    })
+    .then(res => res.json())
     .then(() => {
-      setIsSubmitting(false);
-      setIsBookingSuccess(true);
+      setIsSubmitting(false); setIsBookingSuccess(true);
       if (activeTab === 'bookings') setActiveTab('home'); 
     })
     .catch(err => { console.error(err); setIsSubmitting(false); });
+  };
+
+  // Cancel booking function
+  const handleCancelBooking = async (bookingId) => {
+    if (!window.confirm("Are you sure you want to cancel this booking?")) return;
+
+    try {
+      const res = await fetch(`${backendUrl}/api/bookings/${bookingId}/cancel`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }
+      });
+
+      if (res.ok) {
+        setMyBookings(prevBookings => 
+          prevBookings.map(b => b._id === bookingId ? { ...b, status: 'cancelled' } : b)
+        );
+      } else {
+        const data = await res.json();
+        alert(data.message || 'Failed to cancel booking');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('An error occurred while cancelling.');
+    }
   };
 
   const categories = [
@@ -213,13 +206,9 @@ const MainApp = () => {
                 <div className="flex justify-between items-center mb-6">
                     <div>
                         <p className="text-xs text-gray-500 font-medium">Hello, {user?.name?.split(' ')[0] || 'Guest'} 👋</p>
-                        <div className="flex items-center text-primary font-bold text-lg mt-1">
-                            <i className="fas fa-map-marker-alt text-teal-600 mr-2"></i>Kano, NG
-                        </div>
+                        <div className="flex items-center text-primary font-bold text-lg mt-1"><i className="fas fa-map-marker-alt text-teal-600 mr-2"></i>Kano, NG</div>
                     </div>
-                    <div className="w-10 h-10 bg-teal-100 text-teal-600 font-bold rounded-full flex items-center justify-center">
-                      {user?.name?.charAt(0).toUpperCase() || 'G'}
-                    </div>
+                    <div className="w-10 h-10 bg-teal-100 text-teal-600 font-bold rounded-full flex items-center justify-center">{user?.name?.charAt(0).toUpperCase() || 'G'}</div>
                 </div>
                 <div className="relative flex items-center">
                     <i className="fas fa-search absolute left-4 text-gray-400 z-10"></i>
@@ -237,9 +226,7 @@ const MainApp = () => {
                     <div className="grid grid-cols-4 gap-4">
                         {categories.map(cat => (
                             <div key={cat.id} onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)} className="flex flex-col items-center cursor-pointer group">
-                                <div className={`h-14 w-14 rounded-2xl flex justify-center items-center text-xl mb-2 transition-all ${cat.bg} ${cat.color} ${selectedCategory === cat.id ? 'ring-2 ring-teal-600 shadow-md scale-105' : ''}`}>
-                                    <i className={`fas ${cat.icon}`}></i>
-                                </div>
+                                <div className={`h-14 w-14 rounded-2xl flex justify-center items-center text-xl mb-2 transition-all ${cat.bg} ${cat.color} ${selectedCategory === cat.id ? 'ring-2 ring-teal-600 shadow-md scale-105' : ''}`}><i className={`fas ${cat.icon}`}></i></div>
                                 <span className={`text-[10px] font-medium text-center ${selectedCategory === cat.id ? 'text-teal-600 font-bold' : 'text-gray-600'}`}>{cat.name}</span>
                             </div>
                         ))}
@@ -286,22 +273,34 @@ const MainApp = () => {
                   <p className="text-gray-500 text-sm mb-6 px-4">You haven't booked any professionals yet.</p>
                   <button onClick={() => setActiveTab('home')} className="bg-teal-600 text-white font-medium px-6 py-3 rounded-xl">Find a Professional</button>
               </div>
-            ) : myBookings.map(booking => (
-              <div key={booking._id} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 mb-4 relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-1 h-full bg-teal-600"></div>
-                <div className="flex justify-between items-start border-b border-gray-50 pb-3 mb-3 pl-2">
-                  <div>
-                    <p className="text-xs text-gray-400 font-medium mb-1">Service with</p>
-                    <h3 className="font-bold text-primary text-lg">{booking.professionalName}</h3>
+            ) : myBookings.map(booking => {
+                let statusColor = 'bg-orange-50 text-orange-500';
+                if (booking.status === 'confirmed') statusColor = 'bg-teal-50 text-teal-600';
+                if (booking.status === 'cancelled') statusColor = 'bg-red-50 text-red-500 line-through opacity-70';
+
+                return (
+                  <div key={booking._id} className={`bg-white p-5 rounded-3xl shadow-sm border border-gray-100 mb-4 relative overflow-hidden transition-all ${booking.status === 'cancelled' ? 'opacity-60' : ''}`}>
+                    <div className={`absolute top-0 left-0 w-1 h-full ${booking.status === 'cancelled' ? 'bg-red-500' : 'bg-teal-600'}`}></div>
+                    <div className="flex justify-between items-start border-b border-gray-50 pb-3 mb-3 pl-2">
+                      <div>
+                        <p className="text-xs text-gray-400 font-medium mb-1">Service with</p>
+                        <h3 className="font-bold text-primary text-lg">{booking.professionalName}</h3>
+                      </div>
+                      <div className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase ${statusColor}`}>{booking.status}</div>
+                    </div>
+                    <div className="pl-2">
+                      <div className="flex items-center text-sm text-gray-600 mb-2"><i className="far fa-calendar-alt w-6 text-teal-600 text-center"></i><span className="font-medium">{new Date(booking.date).toLocaleDateString()} at {booking.time}</span></div>
+                      <div className="flex items-start text-sm text-gray-600 mb-4"><i className="fas fa-map-marker-alt w-6 text-teal-600 text-center mt-1"></i><span className="flex-1">{booking.address}</span></div>
+                      
+                      {booking.status === 'pending' && (
+                          <button onClick={() => handleCancelBooking(booking._id)} className="mt-2 w-full py-2 bg-red-50 text-red-500 text-xs font-bold rounded-xl hover:bg-red-100 transition">
+                              <i className="fas fa-times-circle mr-1"></i> Cancel Booking
+                          </button>
+                      )}
+                    </div>
                   </div>
-                  <div className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase ${booking.status === 'pending' ? 'bg-orange-50 text-orange-500' : 'bg-teal-50 text-teal-600'}`}>{booking.status}</div>
-                </div>
-                <div className="pl-2">
-                  <div className="flex items-center text-sm text-gray-600 mb-2"><i className="far fa-calendar-alt w-6 text-teal-600 text-center"></i><span className="font-medium">{new Date(booking.date).toLocaleDateString()} at {booking.time}</span></div>
-                  <div className="flex items-start text-sm text-gray-600 mb-4"><i className="fas fa-map-marker-alt w-6 text-teal-600 text-center mt-1"></i><span className="flex-1">{booking.address}</span></div>
-                </div>
-              </div>
-            ))}
+                );
+            })}
           </div>
         )}
 
@@ -310,14 +309,10 @@ const MainApp = () => {
           <div className="flex-1 overflow-y-auto px-6 pt-10 pb-28 bg-gray-50">
             <h2 className="text-2xl font-bold text-primary mb-6">My Account</h2>
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6 text-center">
-              <div className="w-24 h-24 bg-teal-100 text-teal-600 rounded-full flex items-center justify-center text-4xl font-bold mx-auto mb-4 border-4 border-white shadow-md">
-                {user?.name?.charAt(0).toUpperCase() || 'G'}
-              </div>
+              <div className="w-24 h-24 bg-teal-100 text-teal-600 rounded-full flex items-center justify-center text-4xl font-bold mx-auto mb-4 border-4 border-white shadow-md">{user?.name?.charAt(0).toUpperCase() || 'G'}</div>
               <h3 className="font-bold text-xl text-primary">{user?.name || 'User'}</h3>
               <p className="text-gray-500 text-sm mb-6">{user?.email || ''}</p>
-              <button onClick={logout} className="bg-red-50 text-red-500 font-bold py-3 px-8 rounded-xl hover:bg-red-100 transition w-full">
-                Log Out
-              </button>
+              <button onClick={logout} className="bg-red-50 text-red-500 font-bold py-3 px-8 rounded-xl hover:bg-red-100 transition w-full">Log Out</button>
             </div>
           </div>
         )}
