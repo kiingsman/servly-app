@@ -10,28 +10,114 @@ L.Icon.Default.mergeOptions({ iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/di
 
 let rawUrl = import.meta.env.VITE_BACKEND_URL || 'https://servly-app-icy0.onrender.com';
 const backendUrl = rawUrl.replace(/\/$/, "");
-const socket = io(backendUrl);
 
 // ==========================================
-// SHARED WEBRTC VIDEO CALL LOGIC & UI (Minified)
+// SHARED WEBRTC VIDEO CALL LOGIC & UI 
 // ==========================================
 const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 const useVideoCall = (socket, activeChatRoom, user) => {
-    const [callState, setCallState] = useState({ status: 'idle', offer: null, callerName: null, room: null }); const localVideoRef = useRef(null); const remoteVideoRef = useRef(null); const peerConnection = useRef(null); const localStream = useRef(null);
-    useEffect(() => { if (!socket) return; const handleIncoming = (data) => setCallState({ status: 'receiving', offer: data.offer, callerName: data.callerName, room: data.room }); const handleAccepted = async (data) => { if(peerConnection.current) { await peerConnection.current.setRemoteDescription(new RTCSessionDescription(data.answer)); setCallState(prev => ({ ...prev, status: 'connected' })); } }; const handleIce = async (data) => { if(peerConnection.current && data.candidate) { try { await peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch(e){} } }; const handleEnded = () => endCall(false); socket.on('incoming_call', handleIncoming); socket.on('call_accepted', handleAccepted); socket.on('ice_candidate', handleIce); socket.on('call_ended', handleEnded); return () => { socket.off('incoming_call', handleIncoming); socket.off('call_accepted', handleAccepted); socket.off('ice_candidate', handleIce); socket.off('call_ended', handleEnded); } }, [socket, activeChatRoom]);
-    const setupMediaAndPeer = async () => { const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true }); localStream.current = stream; if(localVideoRef.current) localVideoRef.current.srcObject = stream; peerConnection.current = new RTCPeerConnection(rtcConfig); stream.getTracks().forEach(track => peerConnection.current.addTrack(track, stream)); peerConnection.current.onicecandidate = (e) => { const room = activeChatRoom ? activeChatRoom._id : callState.room; if(e.candidate && room) socket.emit('ice_candidate', { room, candidate: e.candidate }); }; peerConnection.current.ontrack = (e) => { if(remoteVideoRef.current) remoteVideoRef.current.srcObject = e.streams[0]; }; };
-    const startCall = async () => { if(!activeChatRoom) return; setCallState({ status: 'calling', room: activeChatRoom._id }); await setupMediaAndPeer(); const offer = await peerConnection.current.createOffer(); await peerConnection.current.setLocalDescription(offer); socket.emit('call_user', { room: activeChatRoom._id, offer, callerName: user.name }); };
-    const acceptCall = async () => { await setupMediaAndPeer(); await peerConnection.current.setRemoteDescription(new RTCSessionDescription(callState.offer)); const answer = await peerConnection.current.createAnswer(); await peerConnection.current.setLocalDescription(answer); socket.emit('accept_call', { room: callState.room, answer }); setCallState(prev => ({ ...prev, status: 'connected' })); };
-    const endCall = (emit = true) => { const room = activeChatRoom ? activeChatRoom._id : callState.room; if(emit && room) socket.emit('end_call', { room }); if(localStream.current) localStream.current.getTracks().forEach(t => t.stop()); if(peerConnection.current) peerConnection.current.close(); peerConnection.current = null; setCallState({ status: 'idle', offer: null, callerName: null, room: null }); };
-    useEffect(() => { if(localVideoRef.current && localStream.current) localVideoRef.current.srcObject = localStream.current; }, [callState.status]); return { callState, localVideoRef, remoteVideoRef, startCall, acceptCall, endCall };
+    const [callState, setCallState] = useState({ status: 'idle', offer: null, callerName: null, room: null }); 
+    const localVideoRef = useRef(null); 
+    const remoteVideoRef = useRef(null); 
+    const peerConnection = useRef(null); 
+    const localStream = useRef(null);
+
+    // FIX: Camera & Mic memory leak cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if(localStream.current) localStream.current.getTracks().forEach(t => t.stop());
+            if(peerConnection.current) peerConnection.current.close();
+        };
+    }, []);
+
+    useEffect(() => { 
+        if (!socket) return; 
+        const handleIncoming = (data) => setCallState({ status: 'receiving', offer: data.offer, callerName: data.callerName, room: data.room }); 
+        const handleAccepted = async (data) => { 
+            if(peerConnection.current) { 
+                await peerConnection.current.setRemoteDescription(new RTCSessionDescription(data.answer)); 
+                setCallState(prev => ({ ...prev, status: 'connected' })); 
+            } 
+        }; 
+        const handleIce = async (data) => { 
+            if(peerConnection.current && data.candidate) { 
+                try { await peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch(e){} 
+            } 
+        }; 
+        const handleEnded = () => endCall(false); 
+        
+        socket.on('incoming_call', handleIncoming); 
+        socket.on('call_accepted', handleAccepted); 
+        socket.on('ice_candidate', handleIce); 
+        socket.on('call_ended', handleEnded); 
+        
+        return () => { 
+            socket.off('incoming_call', handleIncoming); 
+            socket.off('call_accepted', handleAccepted); 
+            socket.off('ice_candidate', handleIce); 
+            socket.off('call_ended', handleEnded); 
+        }; 
+    }, [socket, activeChatRoom]); // FIX: Dependency array updated
+
+    const setupMediaAndPeer = async () => { 
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true }); 
+        localStream.current = stream; 
+        if(localVideoRef.current) localVideoRef.current.srcObject = stream; 
+        
+        peerConnection.current = new RTCPeerConnection(rtcConfig); 
+        stream.getTracks().forEach(track => peerConnection.current.addTrack(track, stream)); 
+        
+        peerConnection.current.onicecandidate = (e) => { 
+            const room = activeChatRoom ? activeChatRoom._id : callState.room; 
+            if(e.candidate && room && socket) socket.emit('ice_candidate', { room, candidate: e.candidate }); 
+        }; 
+        peerConnection.current.ontrack = (e) => { 
+            if(remoteVideoRef.current) remoteVideoRef.current.srcObject = e.streams[0]; 
+        }; 
+    };
+
+    const startCall = async () => { 
+        if(!activeChatRoom || !socket) return; 
+        setCallState({ status: 'calling', room: activeChatRoom._id }); 
+        await setupMediaAndPeer(); 
+        const offer = await peerConnection.current.createOffer(); 
+        await peerConnection.current.setLocalDescription(offer); 
+        socket.emit('call_user', { room: activeChatRoom._id, offer, callerName: user.name }); 
+    };
+
+    const acceptCall = async () => { 
+        if(!socket) return;
+        await setupMediaAndPeer(); 
+        await peerConnection.current.setRemoteDescription(new RTCSessionDescription(callState.offer)); 
+        const answer = await peerConnection.current.createAnswer(); 
+        await peerConnection.current.setLocalDescription(answer); 
+        socket.emit('accept_call', { room: callState.room, answer }); 
+        setCallState(prev => ({ ...prev, status: 'connected' })); 
+    };
+
+    const endCall = (emit = true) => { 
+        const room = activeChatRoom ? activeChatRoom._id : callState.room; 
+        if(emit && room && socket) socket.emit('end_call', { room }); 
+        if(localStream.current) localStream.current.getTracks().forEach(t => t.stop()); 
+        if(peerConnection.current) peerConnection.current.close(); 
+        peerConnection.current = null; 
+        setCallState({ status: 'idle', offer: null, callerName: null, room: null }); 
+    };
+
+    useEffect(() => { 
+        if(localVideoRef.current && localStream.current) localVideoRef.current.srcObject = localStream.current; 
+    }, [callState.status]); 
+    
+    return { callState, localVideoRef, remoteVideoRef, startCall, acceptCall, endCall };
 };
+
 const CallUI = ({ callState, localVideoRef, remoteVideoRef, acceptCall, endCall }) => {
     if(callState.status === 'idle') return null;
     return (<div className="absolute inset-0 bg-gray-900 z-[100] flex flex-col animate-[slideUp_0.3s_ease-out]"><video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover bg-gray-900" />{(callState.status === 'calling' || callState.status === 'connected') && (<div className="absolute top-6 right-6 w-24 h-36 bg-gray-800 rounded-xl overflow-hidden shadow-2xl border-2 border-gray-700"><video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" /></div>)}{callState.status === 'receiving' && (<div className="absolute inset-0 bg-gray-900/90 flex flex-col items-center justify-center p-6 text-center"><div className="w-24 h-24 bg-teal-500 rounded-full animate-bounce flex items-center justify-center text-4xl text-white mb-6 shadow-lg"><i className="fas fa-video"></i></div><h2 className="text-2xl font-bold text-white mb-2">{callState.callerName} is calling...</h2><p className="text-gray-400 mb-12">Incoming Video Call</p><div className="flex gap-8"><button onClick={() => endCall(true)} className="w-16 h-16 bg-red-500 rounded-full text-white text-xl"><i className="fas fa-times"></i></button><button onClick={acceptCall} className="w-16 h-16 bg-green-500 rounded-full text-white text-xl animate-pulse"><i className="fas fa-video"></i></button></div></div>)}{callState.status === 'calling' && (<div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center pointer-events-none bg-gray-900/50"><h2 className="text-2xl font-bold text-white mb-2">Calling...</h2><p className="text-gray-300">Waiting for answer</p></div>)}{(callState.status === 'calling' || callState.status === 'connected') && (<div className="absolute bottom-10 left-0 w-full flex justify-center"><button onClick={() => endCall(true)} className="w-16 h-16 bg-red-500 rounded-full text-white text-2xl shadow-lg"><i className="fas fa-phone-slash"></i></button></div>)}</div>);
 };
 
 // ==========================================
-// AUTHENTICATION SCREEN (Minified)
+// AUTHENTICATION SCREEN
 // ==========================================
 const AuthScreen = () => {
     const [isLogin, setIsLogin] = useState(true); const [isProMode, setIsProMode] = useState(false); const [formData, setFormData] = useState({ name: '', email: '', password: '', title: '', category: 'cleaning', price: '' }); const [error, setError] = useState(''); const [isLoading, setIsLoading] = useState(false); const { login } = useAuth();
@@ -40,9 +126,9 @@ const AuthScreen = () => {
 };
 
 // ==========================================
-// UPDATED FULL CLIENT DASHBOARD
+// CLIENT DASHBOARD
 // ==========================================
-const ClientApp = () => {
+const ClientApp = ({ socket }) => {
   const { user, login, logout } = useAuth();
   
   const [activeTab, setActiveTab] = useState('home');
@@ -67,12 +153,12 @@ const ClientApp = () => {
   const [viewingLiveMap, setViewingLiveMap] = useState(false);
   const watchIdRef = useRef(null);
 
-  // NOTIFICATIONS, SETTINGS & FAVORITES
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  
+  const unreadCount = Array.isArray(notifications) ? notifications.filter(n => !n.isRead).length : 0;
 
-  const [activePanel, setActivePanel] = useState(null); // null | 'edit_profile' | 'addresses' | 'payments'
+  const [activePanel, setActivePanel] = useState(null);
   const [profileForm, setProfileForm] = useState({ name: user?.name || '', email: user?.email || '', phone: user?.phone || '' });
   const [addresses, setAddresses] = useState(user?.addresses || []);
   const [favorites, setFavorites] = useState(user?.favorites || []);
@@ -82,41 +168,53 @@ const ClientApp = () => {
 
   const callLogic = useVideoCall(socket, activeChatRoom, user);
 
+  // FIX: Stale state prevention by adding socket to dependency array
   useEffect(() => {
     fetch(`${backendUrl}/api/professionals`).then(res => res.json()).then(data => setProfessionals(data));
-    fetch(`${backendUrl}/api/notifications`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }).then(res => res.json()).then(data => setNotifications(data || []));
+    
+    fetch(`${backendUrl}/api/notifications`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } })
+        .then(res => { if(!res.ok) throw new Error('Not authorized'); return res.json(); })
+        .then(data => setNotifications(Array.isArray(data) ? data : []))
+        .catch(() => setNotifications([]));
 
-    // Fetch user profile to guarantee we have their latest avatar, phone, and favorites
     fetch(`${backendUrl}/api/user/profile`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } })
-        .then(res => res.json())
+        .then(res => { if(!res.ok) throw new Error('Not authorized'); return res.json(); })
         .then(data => {
             if(data) {
                 setProfileForm({ name: data.name, email: data.email, phone: data.phone || '' });
                 setAddresses(data.addresses || []);
                 setFavorites(data.favorites || []);
-                // Sync local user context with fresh DB data
                 login({ ...user, name: data.name, avatar: data.avatar, phone: data.phone, favorites: data.favorites }, localStorage.getItem('servly_token'));
             }
-        });
+        })
+        .catch(err => console.log("Profile fetch err:", err));
 
-    socket.on('receive_message', (data) => setMessageList((list) => [...list, data]));
-    socket.on('receive_live_location', (data) => { if (data.lat === null) setPartnerLocation(null); else setPartnerLocation({ lat: data.lat, lng: data.lng, author: data.author }); });
-    socket.on('new_notification', (data) => setNotifications(prev => [data, ...prev]));
+    if (!socket) return;
+    
+    const onReceiveMessage = (data) => setMessageList((list) => [...list, data]);
+    const onReceiveLocation = (data) => { if (data.lat === null) setPartnerLocation(null); else setPartnerLocation({ lat: data.lat, lng: data.lng, author: data.author }); };
+    const onNewNotification = (data) => setNotifications(prev => [data, ...(Array.isArray(prev) ? prev : [])]);
 
-    return () => { socket.off('receive_message'); socket.off('receive_live_location'); socket.off('new_notification'); if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current); };
-  }, []);
+    socket.on('receive_message', onReceiveMessage);
+    socket.on('receive_live_location', onReceiveLocation);
+    socket.on('new_notification', onNewNotification);
+
+    return () => { 
+        socket.off('receive_message', onReceiveMessage); 
+        socket.off('receive_live_location', onReceiveLocation); 
+        socket.off('new_notification', onNewNotification); 
+        if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current); 
+    };
+  }, [socket, login, user]); 
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messageList, activeTab]);
 
   useEffect(() => {
-    if (activeTab === 'bookings') fetch(`${backendUrl}/api/bookings`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }).then(res => res.json()).then(data => setMyBookings(data));
-    if (activeTab === 'chat' && activeChatRoom) socket.emit('join_room', activeChatRoom._id);
-    if (activeTab !== 'chat' && isSharingLocation) { if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current); setIsSharingLocation(false); if (activeChatRoom) socket.emit('live_location_update', { room: activeChatRoom._id, lat: null, lng: null, author: user.name }); }
-  }, [activeTab, activeChatRoom]);
+    if (activeTab === 'bookings') fetch(`${backendUrl}/api/bookings`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }).then(res => res.json()).then(data => setMyBookings(Array.isArray(data) ? data : []));
+    if (activeTab === 'chat' && activeChatRoom && socket) socket.emit('join_room', activeChatRoom._id);
+    if (activeTab !== 'chat' && isSharingLocation) { if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current); setIsSharingLocation(false); if (activeChatRoom && socket) socket.emit('live_location_update', { room: activeChatRoom._id, lat: null, lng: null, author: user.name }); }
+  }, [activeTab, activeChatRoom, socket, isSharingLocation, user.name]);
 
-  // ==========================
-  // PROFILE, AVATAR & SETTINGS LOGIC
-  // ==========================
   const handleSaveProfile = async () => {
       try {
           const res = await fetch(`${backendUrl}/api/user/profile`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, body: JSON.stringify(profileForm) });
@@ -149,6 +247,7 @@ const ClientApp = () => {
           setShowAddAddressForm(false);
       } catch (err) { alert("Failed to add address"); }
   };
+  
   const handleDeleteAddress = async (addressId) => {
       try { const res = await fetch(`${backendUrl}/api/user/addresses/${addressId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }); setAddresses(await res.json()); } 
       catch (err) { alert("Failed to delete address"); }
@@ -164,13 +263,12 @@ const ClientApp = () => {
       } catch(err) { console.error("Favorite failed", err); }
   };
 
-  const markNotificationsRead = () => { setShowNotifications(!showNotifications); if (!showNotifications && unreadCount > 0) { fetch(`${backendUrl}/api/notifications/read`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }); setNotifications(notifications.map(n => ({...n, isRead: true}))); } };
-
+  const markNotificationsRead = () => { setShowNotifications(!showNotifications); if (!showNotifications && unreadCount > 0) { fetch(`${backendUrl}/api/notifications/read`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }); setNotifications(Array.isArray(notifications) ? notifications.map(n => ({...n, isRead: true})) : []); } };
   const handleBookingSubmit = (e) => { e.preventDefault(); fetch(`${backendUrl}/api/bookings`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, body: JSON.stringify({ professionalId: bookingPro._id || bookingPro.id, professionalName: bookingPro.name, date: bookingData.date, time: bookingData.time, address: bookingData.address, totalPrice: bookingPro.price }) }).then(res => res.json()).then(() => setIsBookingSuccess(true)); };
   const handleCancelBooking = async (id) => { if (!window.confirm("Cancel booking?")) return; const res = await fetch(`${backendUrl}/api/bookings/${id}/cancel`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }); if (res.ok) setMyBookings(prev => prev.map(b => b._id === id ? { ...b, status: 'cancelled' } : b)); };
-  const openPrivateChat = async (booking) => { setActiveChatRoom(booking); setMessageList([]); setActiveTab('chat'); fetch(`${backendUrl}/api/chat/${booking._id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }).then(res => res.json()).then(data => setMessageList(data)); };
-  const sendMessage = async () => { if (currentMessage && activeChatRoom) { const msg = { room: activeChatRoom._id, author: user.name, message: currentMessage, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }; await socket.emit('send_message', msg); setMessageList(list => [...list, msg]); setCurrentMessage(""); } };
-  const toggleLocationSharing = () => { if (isSharingLocation) { if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current); setIsSharingLocation(false); socket.emit('live_location_update', { room: activeChatRoom._id, lat: null, lng: null, author: user.name }); } else { if (navigator.geolocation) { watchIdRef.current = navigator.geolocation.watchPosition((pos) => { socket.emit('live_location_update', { room: activeChatRoom._id, lat: pos.coords.latitude, lng: pos.coords.longitude, author: user.name }); }, () => alert("GPS error."), { enableHighAccuracy: true }); setIsSharingLocation(true); } } };
+  const openPrivateChat = async (booking) => { setActiveChatRoom(booking); setMessageList([]); setActiveTab('chat'); fetch(`${backendUrl}/api/chat/${booking._id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }).then(res => res.json()).then(data => setMessageList(Array.isArray(data) ? data : [])); };
+  const sendMessage = async () => { if (currentMessage && activeChatRoom && socket) { const msg = { room: activeChatRoom._id, author: user.name, message: currentMessage, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }; await socket.emit('send_message', msg); setMessageList(list => [...list, msg]); setCurrentMessage(""); } };
+  const toggleLocationSharing = () => { if (isSharingLocation) { if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current); setIsSharingLocation(false); if(socket) socket.emit('live_location_update', { room: activeChatRoom._id, lat: null, lng: null, author: user.name }); } else { if (navigator.geolocation) { watchIdRef.current = navigator.geolocation.watchPosition((pos) => { if(socket) socket.emit('live_location_update', { room: activeChatRoom._id, lat: pos.coords.latitude, lng: pos.coords.longitude, author: user.name }); }, () => alert("GPS error."), { enableHighAccuracy: true }); setIsSharingLocation(true); } } };
 
   const categories = [ { id: 'cleaning', name: 'Cleaning', icon: 'fa-broom', bg: 'bg-blue-50', color: 'text-blue-500' }, { id: 'electric', name: 'Electric', icon: 'fa-bolt', bg: 'bg-orange-50', color: 'text-orange-500' }, { id: 'plumbing', name: 'Plumbing', icon: 'fa-wrench', bg: 'bg-teal-50', color: 'text-teal-600' }, { id: 'tech', name: 'Tech & IT', icon: 'fa-laptop-code', bg: 'bg-purple-50', color: 'text-purple-500' } ];
   
@@ -182,7 +280,6 @@ const ClientApp = () => {
     <div className="bg-bgLight w-full max-w-md mx-auto h-screen md:h-[850px] md:rounded-[2.5rem] md:shadow-2xl relative overflow-hidden md:border-8 md:border-gray-900 flex flex-col">
         <CallUI {...callLogic} />
         
-        {/* --- 1. HOME DASHBOARD --- */}
         {activeTab === 'home' && (
             <div className="flex-1 overflow-y-auto pb-28">
                 <div className="bg-white px-6 pt-10 pb-6 rounded-b-3xl shadow-sm relative z-20">
@@ -194,10 +291,35 @@ const ClientApp = () => {
                                 <div className="flex items-center text-primary font-bold text-lg mt-0.5"><i className="fas fa-map-marker-alt text-teal-600 mr-2 text-sm"></i>Kano, NG</div>
                             </div>
                         </div>
+
                         <div className="relative">
-                            <button onClick={markNotificationsRead} className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-200 transition"><i className="far fa-bell"></i>{unreadCount > 0 && <span className="absolute top-0 right-0 w-3.5 h-3.5 bg-red-500 rounded-full border-2 border-white"></span>}</button>
-                            {showNotifications && (<div className="absolute top-12 right-0 w-72 bg-white rounded-2xl shadow-2xl border border-gray-100 py-2 z-50 max-h-80 overflow-y-auto"><h3 className="px-4 py-2 font-bold text-sm border-b">Notifications</h3>{notifications.length === 0 ? (<p className="px-4 py-4 text-xs text-gray-500 text-center">No new notifications</p>) : (notifications.map(n => (<div key={n._id} className={`px-4 py-3 border-b border-gray-50 flex gap-3 ${!n.isRead ? 'bg-teal-50/50' : ''}`}><div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center ${n.type === 'booking' ? 'bg-teal-100 text-teal-600' : 'bg-blue-100 text-blue-600'}`}><i className={`fas ${n.type === 'booking' ? 'fa-calendar-check' : 'fa-comment'}`}></i></div><div><p className="text-xs font-bold text-gray-800">{n.title}</p><p className="text-[10px] text-gray-500 mt-0.5 line-clamp-2">{n.message}</p></div></div>))))}</div>)}
+                            <button onClick={markNotificationsRead} className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-200 transition">
+                                <i className="far fa-bell"></i>
+                                {unreadCount > 0 && <span className="absolute top-0 right-0 w-3.5 h-3.5 bg-red-500 rounded-full border-2 border-white"></span>}
+                            </button>
+
+                            {showNotifications && (
+                                <div className="absolute top-12 right-0 w-72 bg-white rounded-2xl shadow-2xl border border-gray-100 py-2 z-50 max-h-80 overflow-y-auto">
+                                    <h3 className="px-4 py-2 font-bold text-sm border-b">Notifications</h3>
+                                    {!Array.isArray(notifications) || notifications.length === 0 ? (
+                                        <p className="px-4 py-4 text-xs text-gray-500 text-center">No new notifications</p>
+                                    ) : (
+                                        notifications.map(n => (
+                                            <div key={n._id} className={`px-4 py-3 border-b border-gray-50 flex gap-3 ${!n.isRead ? 'bg-teal-50/50' : ''}`}>
+                                                <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center ${n.type === 'booking' ? 'bg-teal-100 text-teal-600' : 'bg-blue-100 text-blue-600'}`}>
+                                                    <i className={`fas ${n.type === 'booking' ? 'fa-calendar-check' : 'fa-comment'}`}></i>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs font-bold text-gray-800">{n.title}</p>
+                                                    <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-2">{n.message}</p>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            )}
                         </div>
+
                     </div>
                     <div className="relative"><i className="fas fa-search absolute left-4 top-4 text-gray-400"></i><input type="text" placeholder="What service do you need?" className="w-full bg-gray-50 border border-gray-100 py-4 pl-12 pr-4 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-teal-600 transition" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div>
                 </div>
@@ -210,7 +332,7 @@ const ClientApp = () => {
             </div>
         )}
 
-        {/* --- 2. FAVORITES TAB --- */}
+        {/* FAVORITES TAB */}
         {activeTab === 'favorites' && (
             <div className="flex-1 overflow-y-auto px-6 pt-10 pb-28 bg-gray-50">
                 <h2 className="text-2xl font-bold text-primary mb-6">Saved Pros</h2>
@@ -225,14 +347,14 @@ const ClientApp = () => {
             </div>
         )}
 
-        {/* --- 3. BOOKINGS --- */}
+        {/* BOOKINGS */}
         {activeTab === 'bookings' && (<div className="flex-1 overflow-y-auto px-6 pt-10 pb-28 bg-gray-50"><h2 className="text-2xl font-bold text-primary mb-6">My Bookings</h2>{myBookings.length === 0 ? (<div className="text-center mt-20"><div className="w-20 h-20 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400 text-3xl"><i className="fas fa-calendar-times"></i></div><h3 className="font-bold text-gray-700">No bookings yet</h3><p className="text-sm text-gray-500 mt-2">Find a professional and book your first service!</p><button onClick={() => setActiveTab('home')} className="mt-6 bg-teal-600 text-white px-6 py-3 rounded-xl font-bold">Explore Services</button></div>) : myBookings.map(b => { let statusColor = b.status === 'confirmed' ? 'bg-teal-50 text-teal-600' : b.status === 'completed' ? 'bg-blue-50 text-blue-600' : b.status === 'cancelled' ? 'bg-red-50 text-red-500' : 'bg-orange-50 text-orange-500'; return (<div key={b._id} className={`bg-white p-5 rounded-3xl shadow-sm mb-4 border border-gray-100 ${b.status === 'cancelled' ? 'opacity-60' : ''}`}><div className="flex justify-between items-start mb-4"><div><h3 className="font-bold text-gray-900">{b.professionalName}</h3><p className="text-xs text-gray-500 mt-1"><i className="far fa-calendar-alt mr-1"></i> {new Date(b.date).toLocaleDateString()} at {b.time}</p></div><span className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase ${statusColor}`}>{b.status}</span></div>{b.status !== 'cancelled' && (<div className="flex gap-2 border-t border-gray-50 pt-4 mt-2">{b.status === 'pending' && <button onClick={() => handleCancelBooking(b._id)} className="flex-1 py-2 bg-red-50 text-red-500 text-xs font-bold rounded-xl hover:bg-red-100 transition">Cancel</button>}<button onClick={() => openPrivateChat(b)} className="flex-1 py-2 bg-teal-50 text-teal-600 text-xs font-bold rounded-xl hover:bg-teal-100 transition"><i className="fas fa-comment-dots mr-1"></i> Message</button></div>)}</div>); })}</div>)}
         
-        {/* --- 4. CHAT & LIVE MAP --- */}
+        {/* CHAT & LIVE MAP */}
         {activeTab === 'chat' && activeChatRoom && (<div className="flex-1 flex flex-col bg-gray-50 pb-20"><div className="px-6 pt-10 pb-4 bg-white border-b flex items-center justify-between"><div className="flex items-center"><button onClick={() => setActiveTab('bookings')} className="mr-4 text-gray-400"><i className="fas fa-chevron-left"></i></button><h2 className="text-lg font-bold">{activeChatRoom.professionalName}</h2></div><button onClick={callLogic.startCall} className="w-10 h-10 bg-teal-50 text-teal-600 rounded-full flex items-center justify-center hover:bg-teal-100"><i className="fas fa-video"></i></button></div>{partnerLocation && (<div className="bg-blue-50 p-3 flex justify-between"><p className="text-xs text-blue-800 font-bold">{partnerLocation.author} is sharing location</p><button onClick={() => setViewingLiveMap(true)} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs">View Map</button></div>)}<div className="flex-1 overflow-y-auto px-4 py-6 flex flex-col gap-4">{messageList.map((msg, idx) => (<div key={idx} className={`flex flex-col ${msg.author === user.name ? 'items-end' : 'items-start'}`}><div className={`px-4 py-3 rounded-2xl max-w-[80%] ${msg.author === user.name ? 'bg-teal-600 text-white' : 'bg-white shadow-sm border border-gray-100'}`}><p className="text-sm">{msg.message}</p></div></div>))}<div ref={chatEndRef} /></div><div className="absolute bottom-[72px] w-full bg-white p-4 flex gap-2"><button onClick={toggleLocationSharing} className={`w-12 h-12 rounded-xl ${isSharingLocation ? 'bg-red-50 text-red-500' : 'bg-gray-100'} flex items-center justify-center`}><i className="fas fa-map-marker-alt"></i></button><input type="text" value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} onKeyPress={(e) => e.key === "Enter" && sendMessage()} className="flex-1 bg-gray-100 p-3 rounded-xl text-sm outline-none" /><button onClick={sendMessage} className="bg-teal-600 text-white w-12 rounded-xl flex items-center justify-center"><i className="fas fa-paper-plane"></i></button></div></div>)}
         {viewingLiveMap && partnerLocation && (<div className="absolute inset-0 bg-white z-50 flex flex-col"><div className="p-6 border-b flex justify-between items-center"><button onClick={() => setViewingLiveMap(false)} className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center"><i className="fas fa-arrow-left"></i></button><h2 className="text-lg font-bold text-gray-800">Live Map</h2><div className="w-10"></div></div><div className="flex-1 relative"><MapContainer center={[partnerLocation.lat, partnerLocation.lng]} zoom={16} style={{ height: '100%', width: '100%', zIndex: 1 }}><TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" /><Marker position={[partnerLocation.lat, partnerLocation.lng]}><Popup>{partnerLocation.author}</Popup></Marker></MapContainer><div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-[400] w-[90%]"><button onClick={toggleLocationSharing} className={`w-full py-4 rounded-2xl font-bold shadow-lg flex items-center justify-center gap-2 ${isSharingLocation ? 'bg-red-500 text-white' : 'bg-teal-600 text-white'}`}><i className="fas fa-location-arrow"></i> {isSharingLocation ? 'Stop Sharing' : 'Share My Location'}</button></div></div></div>)}
         
-        {/* --- 5. MAIN PROFILE TAB --- */}
+        {/* MAIN PROFILE TAB */}
         {activeTab === 'profile' && !activePanel && (
             <div className="flex-1 overflow-y-auto bg-gray-50 pb-28">
                 <div className="bg-teal-600 pt-12 pb-6 px-6 text-center rounded-b-3xl shadow-sm relative">
@@ -267,11 +389,7 @@ const ClientApp = () => {
             </div>
         )}
 
-        {/* ==================================
-            SETTINGS PANELS (SLIDE UP)
-            ================================== */}
-
-        {/* A. EDIT PROFILE PANEL WITH PHOTO UPLOAD */}
+        {/* EDIT PROFILE PANEL */}
         {activePanel === 'edit_profile' && (
             <div className="absolute inset-0 bg-white z-50 flex flex-col animate-[slideUp_0.3s_ease-out]">
                 <div className="p-6 border-b flex items-center bg-white shadow-sm">
@@ -279,8 +397,6 @@ const ClientApp = () => {
                     <h2 className="text-xl font-bold">Edit Profile</h2>
                 </div>
                 <div className="p-6 flex-1 overflow-y-auto">
-                    
-                    {/* CAMERA AVATAR UPLOAD UI */}
                     <div className="flex justify-center mb-8 relative">
                         <div className={`w-28 h-28 rounded-full border-4 border-white shadow-md overflow-hidden bg-gray-100 flex items-center justify-center text-4xl font-bold text-teal-600 ${isUploadingAvatar ? 'opacity-50' : ''}`}>
                             {user?.avatar ? <img src={user.avatar} className="w-full h-full object-cover" /> : user?.name?.charAt(0)}
@@ -309,7 +425,7 @@ const ClientApp = () => {
             </div>
         )}
 
-        {/* B. SAVED ADDRESSES PANEL */}
+        {/* SAVED ADDRESSES PANEL */}
         {activePanel === 'addresses' && (
             <div className="absolute inset-0 bg-gray-50 z-50 flex flex-col animate-[slideUp_0.3s_ease-out]">
                 <div className="p-6 border-b bg-white flex items-center shadow-sm">
@@ -361,7 +477,7 @@ const ClientApp = () => {
             </div>
         )}
 
-        {/* C. PAYMENT METHODS PANEL (Premium UI Mockup) */}
+        {/* PAYMENT METHODS PANEL */}
         {activePanel === 'payments' && (
             <div className="absolute inset-0 bg-gray-50 z-50 flex flex-col animate-[slideUp_0.3s_ease-out]">
                 <div className="p-6 border-b bg-white flex items-center shadow-sm">
@@ -369,7 +485,6 @@ const ClientApp = () => {
                     <h2 className="text-xl font-bold">Payment Methods</h2>
                 </div>
                 <div className="p-6 flex-1 overflow-y-auto">
-                    {/* Beautiful Credit Card Mock */}
                     <div className="w-full h-48 bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-6 flex flex-col justify-between text-white shadow-xl relative overflow-hidden mb-6">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-10 translate-x-10"></div>
                         <div className="flex justify-between items-start relative z-10">
@@ -393,10 +508,7 @@ const ClientApp = () => {
             </div>
         )}
 
-        {/* ==================================
-            PRO PORTFOLIO & BOOKING FLOW
-            ================================== */}
-        
+        {/* PRO PORTFOLIO */}
         {viewingProfile && !bookingPro && (
              <div className="absolute inset-0 bg-gray-50 z-40 flex flex-col overflow-y-auto hide-scrollbar">
                  <div className="absolute top-6 left-6 z-50"><button onClick={() => setViewingProfile(null)} className="h-10 w-10 rounded-full bg-black/40 text-white backdrop-blur-md flex items-center justify-center hover:bg-black/60 transition"><i className="fas fa-arrow-left"></i></button></div>
@@ -467,18 +579,96 @@ const ClientApp = () => {
 
 
 // ==========================================
-// PROFESSIONAL DASHBOARD (Minified)
+// PROFESSIONAL DASHBOARD
 // ==========================================
-const ProfessionalApp = () => {
-    const { user, logout } = useAuth(); const [activeTab, setActiveTab] = useState('jobs'); const [jobs, setJobs] = useState([]); const [activeChatRoom, setActiveChatRoom] = useState(null); const [messageList, setMessageList] = useState([]); const [currentMessage, setCurrentMessage] = useState(''); const chatEndRef = useRef(null); const [viewingMapForJob, setViewingMapForJob] = useState(null); const [mapPosition, setMapPosition] = useState([11.9964, 8.5167]); const [isSharingLocation, setIsSharingLocation] = useState(false); const [partnerLocation, setPartnerLocation] = useState(null); const [viewingLiveMap, setViewingLiveMap] = useState(false); const watchIdRef = useRef(null); const callLogic = useVideoCall(socket, activeChatRoom, user); const [myProfile, setMyProfile] = useState(null); const [isEditingProfile, setIsEditingProfile] = useState(false); const [editForm, setEditForm] = useState({}); const [isSaving, setIsSaving] = useState(false);
-    useEffect(() => { fetch(`${backendUrl}/api/pro/bookings`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }).then(res => res.json()).then(data => setJobs(data)); fetch(`${backendUrl}/api/professionals`).then(res => res.json()).then(data => { const me = data.find(p => p.userId === user.id); if(me) { setMyProfile(me); setEditForm(me); } }); socket.on('receive_message', (data) => setMessageList((list) => [...list, data])); socket.on('receive_live_location', (data) => { if (data.lat === null) setPartnerLocation(null); else setPartnerLocation({ lat: data.lat, lng: data.lng, author: data.author }); }); return () => { socket.off('receive_message'); socket.off('receive_live_location'); if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current); }; }, []);
-    useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messageList]); useEffect(() => { if (activeTab !== 'chat' && isSharingLocation && !viewingMapForJob) { if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current); setIsSharingLocation(false); if (activeChatRoom) socket.emit('live_location_update', { room: activeChatRoom._id, lat: null, lng: null, author: user.name }); } }, [activeTab, activeChatRoom, viewingMapForJob]);
-    const openChat = async (job) => { setActiveChatRoom(job); setMessageList([]); setActiveTab('chat'); socket.emit('join_room', job._id); fetch(`${backendUrl}/api/chat/${job._id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }).then(res => res.json()).then(data => setMessageList(data)); };
-    const sendMessage = async () => { if (currentMessage && activeChatRoom) { const msgData = { room: activeChatRoom._id, author: user.name, message: currentMessage, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }; await socket.emit('send_message', msgData); setMessageList(list => [...list, msgData]); setCurrentMessage(""); } };
+const ProfessionalApp = ({ socket }) => {
+    const { user, logout } = useAuth(); 
+    const [activeTab, setActiveTab] = useState('jobs'); 
+    const [jobs, setJobs] = useState([]); 
+    const [activeChatRoom, setActiveChatRoom] = useState(null); 
+    const [messageList, setMessageList] = useState([]); 
+    const [currentMessage, setCurrentMessage] = useState(''); 
+    const chatEndRef = useRef(null); 
+    const [viewingMapForJob, setViewingMapForJob] = useState(null); 
+    const [mapPosition, setMapPosition] = useState([11.9964, 8.5167]); 
+    const [isSharingLocation, setIsSharingLocation] = useState(false); 
+    const [partnerLocation, setPartnerLocation] = useState(null); 
+    const [viewingLiveMap, setViewingLiveMap] = useState(false); 
+    const watchIdRef = useRef(null); 
+    
+    const callLogic = useVideoCall(socket, activeChatRoom, user); 
+    
+    const [myProfile, setMyProfile] = useState(null); 
+    const [isEditingProfile, setIsEditingProfile] = useState(false); 
+    const [editForm, setEditForm] = useState({}); 
+    const [isSaving, setIsSaving] = useState(false);
+    
+    // FIX: Stale state prevention by adding socket to dependency array
+    useEffect(() => { 
+        fetch(`${backendUrl}/api/pro/bookings`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }).then(res => res.json()).then(data => setJobs(data)); 
+        fetch(`${backendUrl}/api/professionals`).then(res => res.json()).then(data => { const me = data.find(p => p.userId === user.id); if(me) { setMyProfile(me); setEditForm(me); } }); 
+        
+        if (!socket) return;
+        
+        const onReceiveMessage = (data) => setMessageList((list) => [...list, data]);
+        const onReceiveLocation = (data) => { if (data.lat === null) setPartnerLocation(null); else setPartnerLocation({ lat: data.lat, lng: data.lng, author: data.author }); };
+        
+        socket.on('receive_message', onReceiveMessage); 
+        socket.on('receive_live_location', onReceiveLocation); 
+        
+        return () => { 
+            socket.off('receive_message', onReceiveMessage); 
+            socket.off('receive_live_location', onReceiveLocation); 
+            if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current); 
+        }; 
+    }, [socket, user.id]);
+    
+    useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messageList]); 
+    
+    useEffect(() => { 
+        if (activeTab !== 'chat' && isSharingLocation && !viewingMapForJob) { 
+            if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current); 
+            setIsSharingLocation(false); 
+            if (activeChatRoom && socket) socket.emit('live_location_update', { room: activeChatRoom._id, lat: null, lng: null, author: user.name }); 
+        } 
+    }, [activeTab, activeChatRoom, viewingMapForJob, isSharingLocation, socket, user.name]);
+    
+    const openChat = async (job) => { 
+        setActiveChatRoom(job); setMessageList([]); setActiveTab('chat'); 
+        if (socket) socket.emit('join_room', job._id); 
+        fetch(`${backendUrl}/api/chat/${job._id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }).then(res => res.json()).then(data => setMessageList(data)); 
+    };
+    
+    const sendMessage = async () => { 
+        if (currentMessage && activeChatRoom && socket) { 
+            const msgData = { room: activeChatRoom._id, author: user.name, message: currentMessage, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }; 
+            await socket.emit('send_message', msgData); 
+            setMessageList(list => [...list, msgData]); 
+            setCurrentMessage(""); 
+        } 
+    };
+    
     const updateJobStatus = async (id, status) => { const res = await fetch(`${backendUrl}/api/admin/bookings/${id}/status`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, body: JSON.stringify({ status }) }); if (res.ok) setJobs(prev => prev.map(j => j._id === id ? { ...j, status } : j)); };
     const handleViewMap = async (job) => { setActiveChatRoom(job); setViewingMapForJob(job); try { const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(job.address)}`); const data = await res.json(); if (data.length > 0) setMapPosition([parseFloat(data[0].lat), parseFloat(data[0].lon)]); } catch (err) {} };
-    const toggleLocationSharing = () => { if (!activeChatRoom) return alert("Open chat room first"); if (isSharingLocation) { if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current); setIsSharingLocation(false); socket.emit('live_location_update', { room: activeChatRoom._id, lat: null, lng: null, author: user.name }); } else { if (navigator.geolocation) { watchIdRef.current = navigator.geolocation.watchPosition((pos) => { socket.emit('live_location_update', { room: activeChatRoom._id, lat: pos.coords.latitude, lng: pos.coords.longitude, author: user.name }); }, () => {}, { enableHighAccuracy: true }); setIsSharingLocation(true); } } };
+    
+    const toggleLocationSharing = () => { 
+        if (!activeChatRoom) return alert("Open chat room first"); 
+        if (isSharingLocation) { 
+            if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current); 
+            setIsSharingLocation(false); 
+            if(socket) socket.emit('live_location_update', { room: activeChatRoom._id, lat: null, lng: null, author: user.name }); 
+        } else { 
+            if (navigator.geolocation) { 
+                watchIdRef.current = navigator.geolocation.watchPosition((pos) => { 
+                    if(socket) socket.emit('live_location_update', { room: activeChatRoom._id, lat: pos.coords.latitude, lng: pos.coords.longitude, author: user.name }); 
+                }, () => {}, { enableHighAccuracy: true }); 
+                setIsSharingLocation(true); 
+            } 
+        } 
+    };
+    
     const handleSaveProfile = async (e) => { e.preventDefault(); setIsSaving(true); try { const res = await fetch(`${backendUrl}/api/pro/profile`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, body: JSON.stringify(editForm) }); const data = await res.json(); setMyProfile(data); setIsEditingProfile(false); } catch(err) { } finally { setIsSaving(false); } };
+    
     return (
         <div className="bg-gray-900 w-full max-w-md mx-auto h-screen md:h-[850px] relative flex flex-col text-white md:rounded-[2.5rem] md:shadow-2xl overflow-hidden">
             <CallUI {...callLogic} />
@@ -493,6 +683,29 @@ const ProfessionalApp = () => {
     );
 };
 
-const AppController = () => { const { user, loading } = useAuth(); useEffect(() => { if (user) socket.emit('register_user', user.id); }, [user]); if (loading) return <div></div>; if (!user) return <AuthScreen />; if (user.role === 'professional') return <ProfessionalApp />; return <ClientApp />; };
+// FIX: Scoped Context Setup for Socket.io
+const AppController = () => { 
+    const { user, loading } = useAuth(); 
+    const [socket, setSocket] = useState(null);
+
+    // Initialize socket ONLY when user is authenticated, and disconnect cleanly on logout
+    useEffect(() => { 
+        if (user) {
+            const newSocket = io(backendUrl);
+            newSocket.emit('register_user', user.id); 
+            setSocket(newSocket);
+            
+            return () => {
+                newSocket.disconnect();
+            };
+        }
+    }, [user]); 
+
+    if (loading) return <div></div>; 
+    if (!user) return <AuthScreen />; 
+    if (user.role === 'professional') return <ProfessionalApp socket={socket} />; 
+    return <ClientApp socket={socket} />; 
+};
+
 const App = () => ( <AuthProvider><AppController /></AuthProvider> );
 export default App;
