@@ -22,12 +22,13 @@ if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, uploadDir),
-    filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname.replace(/\s+/g, '-'))
+    // FIX: Safely replace spaces without triggering regex escape warnings across strict parsers
+    filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname.split(' ').join('-'))
 });
 const upload = multer({ storage });
 
 // ==========================================
-// 2. SCHEMAS (Added Favorites & Avatar)
+// 2. SCHEMAS
 // ==========================================
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -37,7 +38,7 @@ const userSchema = new mongoose.Schema({
   phone: { type: String, default: '' },
   avatar: { type: String, default: '' },
   addresses: [{ label: String, address: String }],
-  favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Professional' }], // NEW: Favorites
+  favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Professional' }],
   createdAt: { type: Date, default: Date.now }
 });
 const User = mongoose.models.User || mongoose.model('User', userSchema);
@@ -89,25 +90,35 @@ const userSockets = {};
 io.on('connection', (socket) => {
     socket.on('register_user', (userId) => { userSockets[userId] = socket.id; });
     socket.on('join_room', (room) => socket.join(room));
+    
     socket.on('send_message', async (data) => {
         try {
-            await new Message({ bookingId: data.room, author: data.author, message: data.message, time: data.time }).save();
+            await new Message({ bookingId: data.room, author: data.author || 'User', message: data.message, time: data.time }).save();
             socket.to(data.room).emit('receive_message', data);
             const booking = await Booking.findById(data.room);
+            
             if (booking) {
                 let recipientUserId = null;
+                // FIX: Safely check who the recipient is
                 if (data.author === booking.clientName) {
                     const proProfile = await Professional.findById(booking.professionalId);
                     if (proProfile) recipientUserId = proProfile.userId;
-                } else { recipientUserId = booking.userId; }
+                } else { 
+                    recipientUserId = booking.userId; 
+                }
+                
                 if (recipientUserId) {
-                    const notif = new Notification({ userId: recipientUserId, title: "New Message", message: `From ${data.author}: "${data.message.substring(0, 30)}..."`, type: "message" });
+                    const notif = new Notification({ userId: recipientUserId, title: "New Message", message: `From ${data.author || 'Someone'}: "${data.message.substring(0, 30)}..."`, type: "message" });
                     await notif.save();
                     if (userSockets[recipientUserId]) io.to(userSockets[recipientUserId]).emit('new_notification', notif);
                 }
             }
-        } catch (err) {}
+        } catch (err) {
+            // FIX: Prevent silent failures
+            console.error('Socket send_message error:', err);
+        }
     });
+
     socket.on('live_location_update', (data) => socket.to(data.room).emit('receive_live_location', data));
     socket.on('call_user', (data) => socket.to(data.room).emit('incoming_call', data));
     socket.on('accept_call', (data) => socket.to(data.room).emit('call_accepted', data));
@@ -123,21 +134,29 @@ app.post('/api/signup', async (req, res) => {
     try {
         const { name, email, password } = req.body;
         if (await User.findOne({ email })) return res.status(400).json({ message: 'User already exists' });
-        const newUser = await new User({ name, email, password: await bcrypt.hash(password, await bcrypt.genSalt(10)), role: 'client', addresses: [], favorites: [] }).save();
+        // FIX: Removed redundant await bcrypt.genSalt()
+        const newUser = await new User({ name, email, password: await bcrypt.hash(password, 10), role: 'client', addresses: [], favorites: [] }).save();
         const token = jwt.sign({ userId: newUser._id, name: newUser.name, role: newUser.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
         res.status(201).json({ token, user: { id: newUser._id, name: newUser.name, email: newUser.email, role: newUser.role, phone: newUser.phone, avatar: newUser.avatar, addresses: newUser.addresses, favorites: newUser.favorites } });
-    } catch (error) { res.status(500).json({ message: 'Server error' }); }
+    } catch (error) { 
+        console.error(error);
+        res.status(500).json({ message: 'Server error' }); 
+    }
 });
 
 app.post('/api/pro-signup', async (req, res) => {
     try {
         const { name, email, password, title, category, price } = req.body;
         if (await User.findOne({ email })) return res.status(400).json({ message: 'Email in use' });
-        const newUser = await new User({ name, email, password: await bcrypt.hash(password, await bcrypt.genSalt(10)), role: 'professional' }).save();
-        const newPro = await new Professional({ userId: newUser._id, name, title, headline: `${title} | Professional Services`, category, price: Number(price), avatar: `https://ui-avatars.com/api/?name=${name.replace(' ', '+')}&background=0D8ABC&color=fff`, skills: [category], rating: 5.0, distance: "1.0 km away", verified: true }).save();
+        // FIX: Removed redundant await bcrypt.genSalt()
+        const newUser = await new User({ name, email, password: await bcrypt.hash(password, 10), role: 'professional' }).save();
+        const newPro = await new Professional({ userId: newUser._id, name, title, headline: `${title} | Professional Services`, category, price: Number(price), avatar: `https://ui-avatars.com/api/?name=${name.replace(/ /g, '+')}&background=0D8ABC&color=fff`, skills: [category], rating: 5.0, distance: "1.0 km away", verified: true }).save();
         const token = jwt.sign({ userId: newUser._id, name: newUser.name, role: newUser.role, proId: newPro._id }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
         res.status(201).json({ token, user: { id: newUser._id, name: newUser.name, email: newUser.email, role: newUser.role, proId: newPro._id, phone: newUser.phone, avatar: newUser.avatar } });
-    } catch (error) { res.status(500).json({ message: 'Server error' }); }
+    } catch (error) { 
+        console.error(error);
+        res.status(500).json({ message: 'Server error' }); 
+    }
 });
 
 app.post('/api/login', async (req, res) => {
@@ -189,28 +208,45 @@ app.delete('/api/user/addresses/:addressId', auth, async (req, res) => {
 app.post('/api/user/favorites/:proId', auth, async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
-        if (!user.favorites.includes(req.params.proId)) {
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        // FIX: Compare ObjectId to String safely
+        if (!user.favorites.some(id => id.toString() === req.params.proId)) {
             user.favorites.push(req.params.proId);
             await user.save();
         }
         res.json(user.favorites);
-    } catch (error) { res.status(500).json({ message: 'Error' }); }
+    } catch (error) { 
+        console.error('Favorites Error:', error);
+        res.status(500).json({ message: 'Error adding favorite' }); 
+    }
 });
 
 app.delete('/api/user/favorites/:proId', auth, async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        // FIX: Compare ObjectId to String safely
         user.favorites = user.favorites.filter(id => id.toString() !== req.params.proId);
         await user.save();
         res.json(user.favorites);
-    } catch (error) { res.status(500).json({ message: 'Error' }); }
+    } catch (error) { res.status(500).json({ message: 'Error removing favorite' }); }
 });
 
 // ==========================================
 // 5. MAIN ROUTES
 // ==========================================
-app.get('/api/professionals', async (req, res) => { res.json(await Professional.find().sort({ createdAt: -1 })); });
-app.put('/api/pro/profile', auth, async (req, res) => { try { res.json(await Professional.findOneAndUpdate({ userId: req.user.id }, { $set: req.body }, { new: true })); } catch (error) { res.status(500).json({ message: 'Error' }); } });
+app.get('/api/professionals', async (req, res) => { 
+    try { res.json(await Professional.find().sort({ createdAt: -1 })); } 
+    catch(error) { res.status(500).json({ message: 'Server Error' }); }
+});
+
+app.put('/api/pro/profile', auth, async (req, res) => { 
+    try { res.json(await Professional.findOneAndUpdate({ userId: req.user.id }, { $set: req.body }, { new: true })); } 
+    catch (error) { res.status(500).json({ message: 'Error updating profile' }); } 
+});
+
 app.post('/api/bookings', auth, async (req, res) => {
     try {
         const newBooking = new Booking({ userId: req.user.id, clientName: req.user.name, professionalId: req.body.professionalId, professionalName: req.body.professionalName, date: req.body.date, time: req.body.time, address: req.body.address, totalPrice: req.body.totalPrice });
@@ -222,21 +258,72 @@ app.post('/api/bookings', auth, async (req, res) => {
             if (userSockets[proProfile.userId]) io.to(userSockets[proProfile.userId]).emit('new_notification', notif);
         }
         res.status(201).json(savedBooking);
-    } catch (error) { res.status(500).json({ message: 'Error' }); }
+    } catch (error) { 
+        console.error(error);
+        res.status(500).json({ message: 'Error creating booking' }); 
+    }
 });
-app.get('/api/bookings', auth, async (req, res) => { res.json(await Booking.find({ userId: req.user.id }).sort({ createdAt: -1 })); });
-app.get('/api/pro/bookings', auth, async (req, res) => { try { const proProfile = await Professional.findOne({ userId: req.user.id }); if (!proProfile) return res.status(404).json({ message: 'Not found' }); res.json(await Booking.find({ professionalId: proProfile._id }).sort({ createdAt: -1 })); } catch (error) { res.status(500).json({ message: 'Error' }); } });
-app.patch('/api/bookings/:id/cancel', auth, async (req, res) => { const booking = await Booking.findById(req.params.id); booking.status = 'cancelled'; res.json(await booking.save()); });
+
+app.get('/api/bookings', auth, async (req, res) => { 
+    try { res.json(await Booking.find({ userId: req.user.id }).sort({ createdAt: -1 })); } 
+    catch (error) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.get('/api/pro/bookings', auth, async (req, res) => { 
+    try { 
+        const proProfile = await Professional.findOne({ userId: req.user.id }); 
+        if (!proProfile) return res.status(404).json({ message: 'Professional profile not found' }); 
+        res.json(await Booking.find({ professionalId: proProfile._id }).sort({ createdAt: -1 })); 
+    } catch (error) { res.status(500).json({ message: 'Error fetching bookings' }); } 
+});
+
+app.patch('/api/bookings/:id/cancel', auth, async (req, res) => { 
+    try {
+        // FIX: Add safety checks and try/catch block to prevent unhandled rejection crashes
+        const booking = await Booking.findById(req.params.id); 
+        if (!booking) return res.status(404).json({ message: 'Booking not found' });
+        booking.status = 'cancelled'; 
+        res.json(await booking.save()); 
+    } catch(error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error cancelling booking' });
+    }
+});
+
 app.patch('/api/admin/bookings/:id/status', auth, async (req, res) => {
     try {
-        const booking = await Booking.findById(req.params.id); booking.status = req.body.status; await booking.save();
+        const booking = await Booking.findById(req.params.id); 
+        if (!booking) return res.status(404).json({ message: 'Booking not found' });
+        
+        booking.status = req.body.status; 
+        await booking.save();
+        
         const notif = new Notification({ userId: booking.userId, title: "Booking Update", message: `Your booking with ${booking.professionalName} was marked as ${req.body.status}.`, type: "status" });
-        await notif.save(); if (userSockets[booking.userId]) io.to(userSockets[booking.userId]).emit('new_notification', notif); res.json(booking);
-    } catch (error) { res.status(500).json({ message: 'Error' }); }
+        await notif.save(); 
+        
+        if (userSockets[booking.userId]) io.to(userSockets[booking.userId]).emit('new_notification', notif); 
+        res.json(booking);
+    } catch (error) { res.status(500).json({ message: 'Error updating status' }); }
 });
-app.get('/api/chat/:bookingId', auth, async (req, res) => { res.json(await Message.find({ bookingId: req.params.bookingId }).sort({ createdAt: 1 })); });
-app.get('/api/notifications', auth, async (req, res) => { res.json(await Notification.find({ userId: req.user.id }).sort({ createdAt: -1 }).limit(30)); });
-app.patch('/api/notifications/read', auth, async (req, res) => { await Notification.updateMany({ userId: req.user.id, isRead: false }, { isRead: true }); res.json({ message: "Marked as read" }); });
+
+app.get('/api/chat/:bookingId', auth, async (req, res) => { 
+    try { res.json(await Message.find({ bookingId: req.params.bookingId }).sort({ createdAt: 1 })); }
+    catch(error) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.get('/api/notifications', auth, async (req, res) => { 
+    try { res.json(await Notification.find({ userId: req.user.id }).sort({ createdAt: -1 }).limit(30)); }
+    catch(error) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/notifications/read', auth, async (req, res) => { 
+    try {
+        await Notification.updateMany({ userId: req.user.id, isRead: false }, { isRead: true }); 
+        res.json({ message: "Marked as read" }); 
+    } catch(error) {
+        res.status(500).json({ message: 'Server error' });
+    }
+});
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
