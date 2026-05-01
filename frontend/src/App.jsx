@@ -170,7 +170,7 @@ const ClientApp = ({ socket }) => {
 
   // FIX: Stale state prevention by adding socket to dependency array
   useEffect(() => {
-    fetch(`${backendUrl}/api/professionals`).then(res => res.json()).then(data => setProfessionals(data));
+    fetch(`${backendUrl}/api/professionals`).then(res => res.json()).then(data => setProfessionals(Array.isArray(data) ? data : []));
     
     fetch(`${backendUrl}/api/notifications`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } })
         .then(res => { if(!res.ok) throw new Error('Not authorized'); return res.json(); })
@@ -605,8 +605,8 @@ const ProfessionalApp = ({ socket }) => {
     
     // FIX: Stale state prevention by adding socket to dependency array
     useEffect(() => { 
-        fetch(`${backendUrl}/api/pro/bookings`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }).then(res => res.json()).then(data => setJobs(data)); 
-        fetch(`${backendUrl}/api/professionals`).then(res => res.json()).then(data => { const me = data.find(p => p.userId === user.id); if(me) { setMyProfile(me); setEditForm(me); } }); 
+        fetch(`${backendUrl}/api/pro/bookings`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }).then(res => res.json()).then(data => setJobs(Array.isArray(data) ? data : [])); 
+        fetch(`${backendUrl}/api/professionals`).then(res => res.json()).then(data => { if(Array.isArray(data)) { const me = data.find(p => p.userId === user.id); if(me) { setMyProfile(me); setEditForm(me); } } }); 
         
         if (!socket) return;
         
@@ -636,7 +636,7 @@ const ProfessionalApp = ({ socket }) => {
     const openChat = async (job) => { 
         setActiveChatRoom(job); setMessageList([]); setActiveTab('chat'); 
         if (socket) socket.emit('join_room', job._id); 
-        fetch(`${backendUrl}/api/chat/${job._id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }).then(res => res.json()).then(data => setMessageList(data)); 
+        fetch(`${backendUrl}/api/chat/${job._id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }).then(res => res.json()).then(data => setMessageList(Array.isArray(data) ? data : [])); 
     };
     
     const sendMessage = async () => { 
