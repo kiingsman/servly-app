@@ -253,18 +253,59 @@ const ClientApp = ({ socket }) => {
       catch (err) { alert("Failed to delete address"); }
   };
 
-  const toggleFavorite = async (e, proId) => {
-      e.stopPropagation();
-      const isFav = favorites.includes(proId);
-      const method = isFav ? 'DELETE' : 'POST';
-      try {
-          const res = await fetch(`${backendUrl}/api/user/favorites/${proId}`, { method, headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }});
-          setFavorites(await res.json());
-      } catch(err) { console.error("Favorite failed", err); }
+  const toggleFavorite = async (e, proId) => { 
+      e.stopPropagation(); 
+      const isFav = favorites.includes(proId); 
+      const method = isFav ? 'DELETE' : 'POST'; 
+      try { 
+          const res = await fetch(`${backendUrl}/api/user/favorites/${proId}`, { 
+              method, 
+              headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }
+          }); 
+          
+          const data = await res.json();
+          
+          if (!res.ok) {
+              alert(`Could not save pro: ${data.message || 'Server Error'}`);
+              return;
+          }
+          
+          setFavorites(Array.isArray(data) ? data : []); 
+      } catch(err) { 
+          console.error("Favorite failed", err); 
+      } 
   };
-
   const markNotificationsRead = () => { setShowNotifications(!showNotifications); if (!showNotifications && unreadCount > 0) { fetch(`${backendUrl}/api/notifications/read`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }); setNotifications(Array.isArray(notifications) ? notifications.map(n => ({...n, isRead: true})) : []); } };
-  const handleBookingSubmit = (e) => { e.preventDefault(); fetch(`${backendUrl}/api/bookings`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, body: JSON.stringify({ professionalId: bookingPro._id || bookingPro.id, professionalName: bookingPro.name, date: bookingData.date, time: bookingData.time, address: bookingData.address, totalPrice: bookingPro.price }) }).then(res => res.json()).then(() => setIsBookingSuccess(true)); };
+  const handleBookingSubmit = async (e) => { 
+      e.preventDefault(); 
+      try {
+          const res = await fetch(`${backendUrl}/api/bookings`, { 
+              method: 'POST', 
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, 
+              body: JSON.stringify({ 
+                  professionalId: bookingPro._id || bookingPro.id, 
+                  professionalName: bookingPro.name, 
+                  date: bookingData.date, 
+                  time: bookingData.time, 
+                  address: bookingData.address, 
+                  totalPrice: bookingPro.price 
+              }) 
+          }); 
+          
+          const data = await res.json();
+          
+          // Check if backend rejected the booking
+          if (!res.ok) {
+              alert(`Booking failed: ${data.message || 'Server Error'}`);
+              return; // Stop here, don't show success screen!
+          }
+          
+          setIsBookingSuccess(true); 
+      } catch(err) {
+          console.error("Booking error:", err);
+          alert("Network error. Could not connect to server.");
+      }
+  };
   const handleCancelBooking = async (id) => { if (!window.confirm("Cancel booking?")) return; const res = await fetch(`${backendUrl}/api/bookings/${id}/cancel`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }); if (res.ok) setMyBookings(prev => prev.map(b => b._id === id ? { ...b, status: 'cancelled' } : b)); };
   const openPrivateChat = async (booking) => { setActiveChatRoom(booking); setMessageList([]); setActiveTab('chat'); fetch(`${backendUrl}/api/chat/${booking._id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }).then(res => res.json()).then(data => setMessageList(Array.isArray(data) ? data : [])); };
   const sendMessage = async () => { if (currentMessage && activeChatRoom && socket) { const msg = { room: activeChatRoom._id, author: user.name, message: currentMessage, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }; await socket.emit('send_message', msg); setMessageList(list => [...list, msg]); setCurrentMessage(""); } };
@@ -667,8 +708,33 @@ const ProfessionalApp = ({ socket }) => {
         } 
     };
     
-    const handleSaveProfile = async (e) => { e.preventDefault(); setIsSaving(true); try { const res = await fetch(`${backendUrl}/api/pro/profile`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, body: JSON.stringify(editForm) }); const data = await res.json(); setMyProfile(data); setIsEditingProfile(false); } catch(err) { } finally { setIsSaving(false); } };
-    
+    const handleSaveProfile = async (e) => { 
+        e.preventDefault(); 
+        setIsSaving(true); 
+        try { 
+            const res = await fetch(`${backendUrl}/api/pro/profile`, { 
+                method: 'PUT', 
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, 
+                body: JSON.stringify(editForm) 
+            }); 
+            
+            const data = await res.json(); 
+            
+            // Check if backend rejected the profile update
+            if (!res.ok) {
+                alert(`Save failed: ${data.message || 'Server Error'}`);
+                return;
+            }
+            
+            setMyProfile(data); 
+            setIsEditingProfile(false); 
+        } catch(err) { 
+            console.error("Profile save error:", err);
+            alert("Network error. Could not connect to server.");
+        } finally { 
+            setIsSaving(false); 
+        } 
+    };
     return (
         <div className="bg-gray-900 w-full max-w-md mx-auto h-screen md:h-[850px] relative flex flex-col text-white md:rounded-[2.5rem] md:shadow-2xl overflow-hidden">
             <CallUI {...callLogic} />
