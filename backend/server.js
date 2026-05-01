@@ -15,7 +15,7 @@ const Booking = require('./models/Booking');
 const Notification = require('./models/Notification'); 
 
 // ==========================================
-// LOCAL FILE UPLOAD SETUP (Multer)
+// 1. LOCAL FILE UPLOAD SETUP (Multer)
 // ==========================================
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
@@ -27,7 +27,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // ==========================================
-// USER & PRO SCHEMAS
+// 2. SCHEMAS (Added Favorites & Avatar)
 // ==========================================
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -35,8 +35,9 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   role: { type: String, enum: ['client', 'professional', 'admin'], default: 'client' },
   phone: { type: String, default: '' },
-  avatar: { type: String, default: '' }, // NEW: Avatar field
+  avatar: { type: String, default: '' },
   addresses: [{ label: String, address: String }],
+  favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Professional' }], // NEW: Favorites
   createdAt: { type: Date, default: Date.now }
 });
 const User = mongoose.models.User || mongoose.model('User', userSchema);
@@ -51,7 +52,6 @@ const professionalSchema = new mongoose.Schema({
     title: { type: String, required: true }, 
     headline: { type: String, default: 'Professional Service Provider' }, 
     about: { type: String, default: 'Experienced professional dedicated to delivering top-quality results.' },
-    experience: [{ jobTitle: String, company: String, startDate: String, endDate: String, description: String }],
     skills: [{ type: String }],
     contactInfo: { portfolio: String, github: String, linkedin: String, website: String },
     rating: { type: Number, default: 5.0 },
@@ -76,13 +76,15 @@ const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } 
 
 app.use(cors()); 
 app.use(express.json());
-// Serve the uploads folder so the frontend can display the images
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'))); // Serve uploaded avatars
 
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/servly', { useNewUrlParser: true, useUnifiedTopology: true })
 .then(() => console.log('✅ MongoDB Connected!'))
 .catch(err => console.log('❌ MongoDB Error:', err));
 
+// ==========================================
+// 3. SOCKET.IO (Chat & Live Location & Call)
+// ==========================================
 const userSockets = {}; 
 io.on('connection', (socket) => {
     socket.on('register_user', (userId) => { userSockets[userId] = socket.id; });
@@ -115,15 +117,15 @@ io.on('connection', (socket) => {
 });
 
 // ==========================================
-// AUTHENTICATION & PROFILE UPLOADS
+// 4. AUTH & PROFILE ROUTES
 // ==========================================
 app.post('/api/signup', async (req, res) => {
     try {
         const { name, email, password } = req.body;
         if (await User.findOne({ email })) return res.status(400).json({ message: 'User already exists' });
-        const newUser = await new User({ name, email, password: await bcrypt.hash(password, await bcrypt.genSalt(10)), role: 'client', addresses: [] }).save();
+        const newUser = await new User({ name, email, password: await bcrypt.hash(password, await bcrypt.genSalt(10)), role: 'client', addresses: [], favorites: [] }).save();
         const token = jwt.sign({ userId: newUser._id, name: newUser.name, role: newUser.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
-        res.status(201).json({ token, user: { id: newUser._id, name: newUser.name, email: newUser.email, role: newUser.role, phone: newUser.phone, avatar: newUser.avatar, addresses: newUser.addresses } });
+        res.status(201).json({ token, user: { id: newUser._id, name: newUser.name, email: newUser.email, role: newUser.role, phone: newUser.phone, avatar: newUser.avatar, addresses: newUser.addresses, favorites: newUser.favorites } });
     } catch (error) { res.status(500).json({ message: 'Server error' }); }
 });
 
@@ -148,18 +150,7 @@ app.post('/api/login', async (req, res) => {
             if (proProfile) proId = proProfile._id;
         }
         const token = jwt.sign({ userId: user._id, name: user.name, role: user.role, proId }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
-        res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role, proId, phone: user.phone, avatar: user.avatar, addresses: user.addresses } });
-    } catch (error) { res.status(500).json({ message: 'Server error' }); }
-});
-
-// NEW: Upload Avatar Endpoint
-app.post('/api/user/avatar', auth, upload.single('avatar'), async (req, res) => {
-    try {
-        if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-        // Create full URL (e.g., http://localhost:10000/uploads/123-img.jpg)
-        const avatarUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
-        const updatedUser = await User.findByIdAndUpdate(req.user.id, { avatar: avatarUrl }, { new: true });
-        res.json({ avatar: updatedUser.avatar });
+        res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role, proId, phone: user.phone, avatar: user.avatar, addresses: user.addresses, favorites: user.favorites } });
     } catch (error) { res.status(500).json({ message: 'Server error' }); }
 });
 
@@ -175,20 +166,48 @@ app.put('/api/user/profile', auth, async (req, res) => {
     } catch (error) { res.status(500).json({ message: 'Server error' }); }
 });
 
-app.post('/api/user/addresses', auth, async (req, res) => {
+app.post('/api/user/avatar', auth, upload.single('avatar'), async (req, res) => {
     try {
-        const user = await User.findById(req.user.id); user.addresses.push(req.body); await user.save(); res.json(user.addresses);
+        if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+        const avatarUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+        const updatedUser = await User.findByIdAndUpdate(req.user.id, { avatar: avatarUrl }, { new: true });
+        res.json({ avatar: updatedUser.avatar });
     } catch (error) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/user/addresses', auth, async (req, res) => {
+    try { const user = await User.findById(req.user.id); user.addresses.push(req.body); await user.save(); res.json(user.addresses); } 
+    catch (error) { res.status(500).json({ message: 'Server error' }); }
 });
 
 app.delete('/api/user/addresses/:addressId', auth, async (req, res) => {
+    try { const user = await User.findById(req.user.id); user.addresses = user.addresses.filter(addr => req.params.addressId !== addr._id.toString()); await user.save(); res.json(user.addresses); } 
+    catch (error) { res.status(500).json({ message: 'Server error' }); }
+});
+
+// NEW: Favorites Routes
+app.post('/api/user/favorites/:proId', auth, async (req, res) => {
     try {
-        const user = await User.findById(req.user.id); user.addresses = user.addresses.filter(addr => req.params.addressId !== addr._id.toString()); await user.save(); res.json(user.addresses);
-    } catch (error) { res.status(500).json({ message: 'Server error' }); }
+        const user = await User.findById(req.user.id);
+        if (!user.favorites.includes(req.params.proId)) {
+            user.favorites.push(req.params.proId);
+            await user.save();
+        }
+        res.json(user.favorites);
+    } catch (error) { res.status(500).json({ message: 'Error' }); }
+});
+
+app.delete('/api/user/favorites/:proId', auth, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+        user.favorites = user.favorites.filter(id => id.toString() !== req.params.proId);
+        await user.save();
+        res.json(user.favorites);
+    } catch (error) { res.status(500).json({ message: 'Error' }); }
 });
 
 // ==========================================
-// MAIN ROUTES
+// 5. MAIN ROUTES
 // ==========================================
 app.get('/api/professionals', async (req, res) => { res.json(await Professional.find().sort({ createdAt: -1 })); });
 app.put('/api/pro/profile', auth, async (req, res) => { try { res.json(await Professional.findOneAndUpdate({ userId: req.user.id }, { $set: req.body }, { new: true })); } catch (error) { res.status(500).json({ message: 'Error' }); } });
@@ -215,7 +234,6 @@ app.patch('/api/admin/bookings/:id/status', auth, async (req, res) => {
         await notif.save(); if (userSockets[booking.userId]) io.to(userSockets[booking.userId]).emit('new_notification', notif); res.json(booking);
     } catch (error) { res.status(500).json({ message: 'Error' }); }
 });
-app.get('/api/admin/bookings', auth, async (req, res) => { res.json(await Booking.find().sort({ createdAt: -1 })); });
 app.get('/api/chat/:bookingId', auth, async (req, res) => { res.json(await Message.find({ bookingId: req.params.bookingId }).sort({ createdAt: 1 })); });
 app.get('/api/notifications', auth, async (req, res) => { res.json(await Notification.find({ userId: req.user.id }).sort({ createdAt: -1 }).limit(30)); });
 app.patch('/api/notifications/read', auth, async (req, res) => { await Notification.updateMany({ userId: req.user.id, isRead: false }, { isRead: true }); res.json({ message: "Marked as read" }); });
