@@ -285,6 +285,7 @@ const ClientApp = ({ socket }) => {
               body: JSON.stringify({ 
                   professionalId: bookingPro._id || bookingPro.id, 
                   professionalName: bookingPro.name, 
+                  clientName: user.name, // <--- ADDED FIX HERE
                   date: bookingData.date, 
                   time: bookingData.time, 
                   address: bookingData.address, 
