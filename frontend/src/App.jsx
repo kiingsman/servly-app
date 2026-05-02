@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AuthProvider, useAuth } from './context/AuthContext'; // Ensure this path matches your folder structure
+import { AuthProvider, useAuth } from './context/AuthContext';
 import io from 'socket.io-client';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -302,7 +302,25 @@ const ClientApp = ({ socket }) => {
         <div className="flex items-center gap-3">
             <div className="relative">
                 <button onClick={markNotificationsRead} className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 relative"><i className="fas fa-bell"></i>{unreadCount > 0 && <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>}</button>
-                {showNotifications && (<div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden z-50"><div className="p-3 bg-gray-50 border-b border-gray-100"><h3 className="font-bold text-sm text-gray-700">Notifications</h3></div><div className="max-h-64 overflow-y-auto">{notifications.length === 0 ? (<p className="p-4 text-center text-sm text-gray-500">No notifications yet</p>) : (notifications.map(n => (<div key={n._id} className={`p-3 border-b border-gray-50 ${!n.isRead ? 'bg-teal-50/30' : ''}`}><h4 className="text-xs font-bold text-gray-800">{n.title}</h4><p className="text-xs text-gray-500 mt-1">{n.message}</p></div>))))}</div></div>)}
+                {showNotifications && (
+                    <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden z-50">
+                        <div className="p-3 bg-gray-50 border-b border-gray-100">
+                            <h3 className="font-bold text-sm text-gray-700">Notifications</h3>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto">
+                            {notifications.length === 0 ? (
+                                <p className="p-4 text-center text-sm text-gray-500">No notifications yet</p>
+                            ) : (
+                                notifications.map(n => (
+                                    <div key={n._id} className={`p-3 border-b border-gray-50 ${!n.isRead ? 'bg-teal-50/30' : ''}`}>
+                                        <h4 className="text-xs font-bold text-gray-800">{n.title}</h4>
+                                        <p className="text-xs text-gray-500 mt-1">{n.message}</p>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
             <img src={user.avatar || `https://ui-avatars.com/api/?name=${user.name.replace(/ /g,'+')}&background=0D8ABC&color=fff`} className="w-10 h-10 rounded-full shadow-sm cursor-pointer object-cover" onClick={() => setActiveTab('profile')} alt="Profile" />
         </div>
