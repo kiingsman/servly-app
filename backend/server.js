@@ -57,602 +57,361 @@ mongoose
 // 3. SOCKET.IO AUTH (JWT) + EVENTS
 // ==========================================
 io.use((socket, next) => {
+  const token = socket.handshake.auth.token;
+  if (!token) return next(new Error('Authentication error'));
   try {
-    const token = socket.handshake.auth?.token;
-    if (!token) return next(new Error('No auth token'));
-
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || 'fallback_secret'
-    );
-
-    socket.userId = decoded.userId;
-    socket.userRole = decoded.role;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supersecretkey');
+    socket.user = decoded;
     next();
   } catch (err) {
-    console.error('Socket auth error:', err.message);
     next(new Error('Authentication error'));
   }
 });
 
-const userSockets = {};
-
 io.on('connection', (socket) => {
-  // Automatically register user on connection using JWT data
-  if (socket.userId) {
-    userSockets[socket.userId] = socket.id;
-  }
+  console.log('⚡ Socket connected:', socket.user.id);
 
-  // Fallback for older clients
-  socket.on('register_user', (userId) => {
-    if (userId) userSockets[userId] = socket.id;
+  // Join a specific booking chat room
+  socket.on('join_room', (roomId) => {
+    socket.join(roomId);
+    console.log(`User ${socket.user.id} joined room ${roomId}`);
   });
 
-  socket.on('join_room', (room) => socket.join(room));
+  // Handle incoming messages
+  socket.on('send_message', async (data) => {
+    try {
+      const newMessage = new Message({
+        bookingId: data.room,
+        senderId: data.senderId,
+        author: data.author,
+        message: data.message,
+        time: data.time,
+        isRead: false
+      });
+      await newMessage.save();
 
-  // --- Read Receipts (ID Based) ---
+      // Broadcast to EVERYONE in the room EXCEPT the sender
+      socket.to(data.room).emit('receive_message', {
+        ...data,
+        isRead: false 
+      });
+    } catch (err) {
+      console.error('Message save error:', err);
+    }
+  });
+
+  // Handle live location sharing (Uber-style)
+  socket.on('live_location_update', (data) => {
+    // Broadcast live GPS coordinates to the other person in the room
+    socket.to(data.room).emit('receive_live_location', data);
+  });
+
+  // Handle read receipts
   socket.on('mark_messages_read', async ({ bookingId, userId }) => {
     try {
-      // Update all messages in this room NOT sent by the current userId
       await Message.updateMany(
-        { 
-          bookingId: bookingId, 
-          senderId: { $ne: String(userId) }, 
-          isRead: false 
-        },
+        { bookingId, senderId: { $ne: userId }, isRead: false },
         { $set: { isRead: true } }
       );
-
-      // Notify the other user in the room that their messages were read
-      socket.to(bookingId).emit('messages_read_update', { bookingId });
+      // Tell the sender their messages were just read
+      socket.to(bookingId).emit('messages_read_update');
     } catch (err) {
       console.error('Read receipt error:', err);
     }
   });
 
-  // --- Send Message ---
-  socket.on('send_message', async (data) => {
-    try {
-      // Figure out the strict ID of the sender
-      const effectiveSenderId = data.senderId || (socket.userId ? String(socket.userId) : null);
-
-      if (!effectiveSenderId) {
-        console.warn('send_message aborted: No senderId provided.');
-        return;
-      }
-
-      // Save the message to DB using the ID
-      await new Message({
-        bookingId: data.room,
-        senderId: effectiveSenderId, // Saves the unique ID to the database
-        author: data.author || 'User',
-        message: data.message || '',
-        time: data.time
-        // isRead defaults to false automatically
-      }).save();
-
-      // Emit to the other person in the room
-      socket.to(data.room).emit('receive_message', data);
-
-      // --- Notification Logic ---
-      const booking = await Booking.findById(data.room);
-      if (!booking) return;
-
-      let recipientUserId = null;
-
-      if (String(effectiveSenderId) === String(booking.userId)) {
-        // Sender is client, notify the pro
-        const proProfile = await Professional.findOne({ _id: booking.professionalId });
-        if (proProfile) recipientUserId = proProfile.userId;
-      } else {
-        // Sender is pro, notify the client
-        recipientUserId = booking.userId;
-      }
-
-      if (!recipientUserId) return;
-
-      const safeMessagePreview = (data.message || '').substring(0, 30);
-
-      const notif = new Notification({
-        userId: recipientUserId,
-        title: 'New Message',
-        message: `From ${data.author || 'Someone'}: "${safeMessagePreview}..."`,
-        type: 'message'
-      });
-
-      await notif.save();
-
-      if (userSockets[recipientUserId]) {
-        io.to(userSockets[recipientUserId]).emit('new_notification', notif);
-      }
-    } catch (err) {
-      console.error('Socket send_message error:', err);
-    }
+  // WebRTC Video Call Signaling
+  socket.on('call_user', (data) => {
+    socket.to(data.room).emit('incoming_call', {
+      offer: data.offer,
+      callerName: data.callerName,
+      room: data.room
+    });
   });
 
-  socket.on('live_location_update', (data) =>
-    socket.to(data.room).emit('receive_live_location', data)
-  );
+  socket.on('accept_call', (data) => {
+    socket.to(data.room).emit('call_accepted', { answer: data.answer });
+  });
 
-  socket.on('call_user', (data) =>
-    socket.to(data.room).emit('incoming_call', data)
-  );
-  socket.on('accept_call', (data) =>
-    socket.to(data.room).emit('call_accepted', data)
-  );
-  socket.on('ice_candidate', (data) =>
-    socket.to(data.room).emit('ice_candidate', data)
-  );
-  socket.on('end_call', (data) =>
-    socket.to(data.room).emit('call_ended')
-  );
+  socket.on('ice_candidate', (data) => {
+    socket.to(data.room).emit('ice_candidate', { candidate: data.candidate });
+  });
+
+  socket.on('end_call', (data) => {
+    socket.to(data.room).emit('call_ended');
+  });
 
   socket.on('disconnect', () => {
-    for (const [userId, socketId] of Object.entries(userSockets)) {
-      if (socketId === socket.id) delete userSockets[userId];
-    }
+    console.log('❌ Socket disconnected:', socket.user.id);
   });
 });
 
+// Helper for sending DB notifications via REST
+const createNotification = async (userId, title, message) => {
+  const notif = new Notification({ userId, title, message });
+  await notif.save();
+  // Optional: If you wanted to push this instantly over socket to a specific user, 
+  // you would need a room-per-user mapping. For now, it stays in DB for polling/fetch.
+  return notif;
+};
+
 // ==========================================
-// 4. AUTH & PROFILE ROUTES
+// 4. AUTH ROUTES
 // ==========================================
 app.post('/api/signup', async (req, res) => {
+  const { name, email, password } = req.body;
   try {
-    const { name, email, password } = req.body;
+    const existing = await User.findOne({ email });
+    if (existing) return res.status(400).json({ message: 'User already exists' });
 
-    if (await User.findOne({ email })) {
-      return res.status(400).json({ message: 'User already exists' });
-    }
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = new User({ name, email, password: hashedPassword, role: 'client' });
+    await user.save();
 
-    const hashed = await bcrypt.hash(password, 10);
-
-    const newUser = await new User({
-      name,
-      email,
-      password: hashed,
-      role: 'client',
-      addresses: [],
-      favorites: []
-    }).save();
-
-    const token = jwt.sign(
-      { userId: newUser._id, name: newUser.name, role: newUser.role },
-      process.env.JWT_SECRET || 'fallback_secret',
-      { expiresIn: '7d' }
-    );
-
-    res.status(201).json({
-      token,
-      user: {
-        id: newUser._id,
-        name: newUser.name,
-        email: newUser.email,
-        role: newUser.role,
-        phone: newUser.phone,
-        avatar: newUser.avatar,
-        addresses: newUser.addresses,
-        favorites: newUser.favorites
-      }
-    });
-  } catch (error) {
-    console.error(error);
+    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET || 'supersecretkey', { expiresIn: '7d' });
+    res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role, favorites: [] } });
+  } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
 });
 
 app.post('/api/pro-signup', async (req, res) => {
+  const { name, email, password, title, category, price } = req.body;
   try {
-    const { name, email, password, title, category, price, headline } = req.body;
+    const existing = await User.findOne({ email });
+    if (existing) return res.status(400).json({ message: 'User already exists' });
 
-    if (await User.findOne({ email })) {
-      return res.status(400).json({ message: 'Email in use' });
-    }
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = new User({ name, email, password: hashedPassword, role: 'professional' });
+    await user.save();
 
-    const numericPrice = Number(price);
-    if (!Number.isFinite(numericPrice) || numericPrice <= 0) {
-      return res.status(400).json({ message: 'Invalid price' });
-    }
-
-    const hashed = await bcrypt.hash(password, 10);
-
-    const newUser = await new User({
-      name,
-      email,
-      password: hashed,
-      role: 'professional'
-    }).save();
-
-    const newPro = await Professional.create({
-      userId: newUser._id,
+    const pro = new Professional({
+      userId: user._id,
       name,
       title,
-      headline: headline || `${title} | Professional Services`, // Support for the new headline field
+      headline: title, // Defaults to title initially
       category,
-      price: numericPrice,
-      avatar: `https://ui-avatars.com/api/?name=${name.replace(
-        / /g,
-        '+'
-      )}&background=0D8ABC&color=fff`,
-      skills: [category],
-      rating: 5.0,
-      distance: '1.0 km away',
-      verified: true
+      price,
+      distance: '0 km',
+      rating: 5.0
     });
+    await pro.save();
 
-    const token = jwt.sign(
-      {
-        userId: newUser._id,
-        name: newUser.name,
-        role: newUser.role,
-        proId: newPro._id
-      },
-      process.env.JWT_SECRET || 'fallback_secret',
-      { expiresIn: '7d' }
-    );
-
-    res.status(201).json({
-      token,
-      user: {
-        id: newUser._id,
-        name: newUser.name,
-        email: newUser.email,
-        role: newUser.role,
-        proId: newPro._id,
-        phone: newUser.phone,
-        avatar: newUser.avatar
-      }
-    });
-  } catch (error) {
-    console.error(error);
+    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET || 'supersecretkey', { expiresIn: '7d' });
+    res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
+  } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
 });
 
 app.post('/api/login', async (req, res) => {
+  const { email, password } = req.body;
   try {
-    const user = await User.findOne({ email: req.body.email });
-    if (!user || !(await bcrypt.compare(req.body.password, user.password))) {
-      return res.status(400).json({ message: 'Invalid credentials' });
-    }
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ message: 'Invalid credentials' });
 
-    let proId = null;
-    if (user.role === 'professional') {
-      const proProfile = await Professional.findOne({ userId: user._id });
-      if (proProfile) proId = proProfile._id;
-    }
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
 
-    const token = jwt.sign(
-      { userId: user._id, name: user.name, role: user.role, proId },
-      process.env.JWT_SECRET || 'fallback_secret',
-      { expiresIn: '7d' }
-    );
-
-    res.json({
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        proId,
-        phone: user.phone,
-        avatar: user.avatar,
-        addresses: user.addresses,
-        favorites: user.favorites
-      }
-    });
-  } catch (error) {
+    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET || 'supersecretkey', { expiresIn: '7d' });
+    res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, favorites: user.favorites || [] } });
+  } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-app.get('/api/user/profile', auth, async (req, res) => {
-  try {
-    const u = await User.findById(req.user.id).select('-password');
-    res.json(u);
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-app.put('/api/user/profile', auth, async (req, res) => {
-  try {
-    const { name, email, phone } = req.body;
-    
-    // 1. Update the User collection
-    const updated = await User.findByIdAndUpdate(
-      req.user.id,
-      { $set: { name, email, phone } },
-      { new: true }
-    ).select('-password');
-
-    // 2. Sync to Professional collection if applicable
-    if (req.user.role === 'professional' && name) {
-      await Professional.findOneAndUpdate(
-        { userId: req.user.id },
-        { name: name }
-      );
-    }
-
-    res.json(updated);
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
+// ==========================================
+// 5. USER ROUTES (Avatar & Favorites)
+// ==========================================
 app.post('/api/user/avatar', auth, upload.single('avatar'), async (req, res) => {
   try {
-    if (!req.file)
-      return res.status(400).json({ message: 'No file uploaded' });
-
+    if (!req.file) return res.status(400).json({ message: 'No image provided' });
     const avatarUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
-
-    // 1. Update the User collection
-    const updatedUser = await User.findByIdAndUpdate(
-      req.user.id,
-      { avatar: avatarUrl },
-      { new: true }
-    );
-
-    // 2. Sync to Professional collection if applicable
-    if (req.user.role === 'professional') {
-      await Professional.findOneAndUpdate(
-        { userId: req.user.id },
-        { avatar: avatarUrl }
-      );
+    
+    const user = await User.findByIdAndUpdate(req.user.id, { avatar: avatarUrl }, { new: true });
+    
+    if (user.role === 'professional') {
+      await Professional.findOneAndUpdate({ userId: user._id }, { avatar: avatarUrl });
     }
-
-    res.json({ avatar: updatedUser.avatar });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-app.post('/api/user/addresses', auth, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-    user.addresses.push(req.body);
-    await user.save();
-    res.json(user.addresses);
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-app.delete('/api/user/addresses/:addressId', auth, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-    user.addresses = user.addresses.filter(
-      (addr) => req.params.addressId !== addr._id.toString()
-    );
-    await user.save();
-    res.json(user.addresses);
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    
+    res.json({ avatar: avatarUrl });
+  } catch (err) {
+    res.status(500).json({ message: 'Upload failed' });
   }
 });
 
 app.post('/api/user/favorites/:proId', auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ message: 'User not found' });
-
-    if (!user.favorites.some((id) => id.toString() === req.params.proId)) {
+    if (!user.favorites.includes(req.params.proId)) {
       user.favorites.push(req.params.proId);
       await user.save();
     }
     res.json(user.favorites);
-  } catch (error) {
-    console.error('Favorites Error:', error);
-    res.status(500).json({ message: 'Error adding favorite' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
 app.delete('/api/user/favorites/:proId', auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ message: 'User not found' });
-
-    user.favorites = user.favorites.filter(
-      (id) => id.toString() !== req.params.proId
-    );
+    user.favorites = user.favorites.filter(id => id.toString() !== req.params.proId);
     await user.save();
     res.json(user.favorites);
-  } catch (error) {
-    res.status(500).json({ message: 'Error removing favorite' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
 // ==========================================
-// 5. MAIN ROUTES
+// 6. PROFESSIONAL ROUTES
 // ==========================================
 app.get('/api/professionals', async (req, res) => {
   try {
-    const pros = await Professional.find().sort({ createdAt: -1 });
+    const pros = await Professional.find();
     res.json(pros);
-  } catch (error) {
-    res.status(500).json({ message: 'Server Error' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
-app.put(
-  '/api/pro/profile',
-  auth,
-  checkRole('professional'),
-  async (req, res) => {
-    try {
-      // The frontend sends { headline: "...", price: "...", category: "..." }
-      // Using $set: req.body ensures the headline gets updated easily!
-      const updated = await Professional.findOneAndUpdate(
-        { userId: req.user.id },
-        { $set: req.body },
-        { new: true }
-      );
-      res.json(updated);
-    } catch (error) {
-      res.status(500).json({ message: 'Error updating profile' });
-    }
-  }
-);
-
-app.post('/api/bookings', auth, async (req, res) => {
+app.put('/api/pro/profile', auth, checkRole('professional'), async (req, res) => {
   try {
-    const newBooking = new Booking({
+    const updatedPro = await Professional.findOneAndUpdate(
+      { userId: req.user.id },
+      { $set: req.body },
+      { new: true, runValidators: true }
+    );
+    res.json(updatedPro);
+  } catch (err) {
+    res.status(500).json({ message: 'Update failed' });
+  }
+});
+
+// ==========================================
+// 7. BOOKING ROUTES
+// ==========================================
+app.post('/api/bookings', auth, checkRole('client'), async (req, res) => {
+  try {
+    const { professionalId, professionalName, clientName, date, time, address, totalPrice } = req.body;
+    
+    const booking = new Booking({
       userId: req.user.id,
-      clientName: req.user.name,
-      professionalId: req.body.professionalId,
-      professionalName: req.body.professionalName,
-      date: req.body.date,
-      time: req.body.time,
-      address: req.body.address,
-      totalPrice: req.body.totalPrice
+      clientName,
+      professionalId,
+      professionalName,
+      date,
+      time,
+      address,
+      totalPrice
     });
+    
+    await booking.save();
 
-    const savedBooking = await newBooking.save();
-
-    const proProfile = await Professional.findOne({ _id: req.body.professionalId });
-    if (proProfile && proProfile.userId) {
-      const notif = new Notification({
-        userId: proProfile.userId,
-        title: 'New Booking Request!',
-        message: `${req.user.name} booked you for ${req.body.date}.`,
-        type: 'booking'
-      });
-      await notif.save();
-      if (userSockets[proProfile.userId]) {
-        io.to(userSockets[proProfile.userId]).emit('new_notification', notif);
-      }
+    // Create Notification for the Professional
+    const pro = await Professional.findById(professionalId);
+    if (pro) {
+      await createNotification(
+        pro.userId, 
+        'New Job Request!', 
+        `${clientName} booked you for ${date} at ${time}.`
+      );
     }
 
-    res.status(201).json(savedBooking);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Error creating booking' });
+    res.status(201).json(booking);
+  } catch (err) {
+    res.status(500).json({ message: 'Booking failed' });
   }
 });
 
-app.get('/api/bookings', auth, async (req, res) => {
+app.get('/api/bookings', auth, checkRole('client'), async (req, res) => {
   try {
-    const bookings = await Booking.find({ userId: req.user.id }).sort({
-      createdAt: -1
-    });
+    const bookings = await Booking.find({ userId: req.user.id }).sort({ createdAt: -1 });
     res.json(bookings);
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch bookings' });
   }
 });
 
-app.get(
-  '/api/pro/bookings',
-  auth,
-  checkRole('professional'),
-  async (req, res) => {
-    try {
-      const proProfile = await Professional.findOne({ userId: req.user.id });
-      if (!proProfile) {
-        return res
-          .status(404)
-          .json({ message: 'Professional profile not found' });
-      }
-
-      const jobs = await Booking.find({
-        professionalId: proProfile._id
-      }).sort({ createdAt: -1 });
-
-      res.json(jobs);
-    } catch (error) {
-      res.status(500).json({ message: 'Error fetching bookings' });
-    }
-  }
-);
-
-app.patch('/api/bookings/:id/cancel', auth, async (req, res) => {
+app.get('/api/pro/bookings', auth, checkRole('professional'), async (req, res) => {
   try {
-    const booking = await Booking.findById(req.params.id);
-    if (!booking)
-      return res.status(404).json({ message: 'Booking not found' });
+    const pro = await Professional.findOne({ userId: req.user.id });
+    if (!pro) return res.status(404).json({ message: 'Professional profile not found' });
 
-    booking.status = 'cancelled';
-    const saved = await booking.save();
-    res.json(saved);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Error cancelling booking' });
+    const bookings = await Booking.find({ professionalId: pro._id }).sort({ createdAt: -1 });
+    res.json(bookings);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch bookings' });
   }
 });
 
-app.patch(
-  '/api/admin/bookings/:id/status',
-  auth,
-  checkRole('admin', 'professional'),
-  async (req, res) => {
-    try {
-      const booking = await Booking.findById(req.params.id);
-      if (!booking)
-        return res.status(404).json({ message: 'Booking not found' });
-
-      booking.status = req.body.status;
-      await booking.save();
-
-      const notif = new Notification({
-        userId: booking.userId,
-        title: 'Booking Update',
-        message: `Your booking with ${booking.professionalName} was marked as ${req.body.status}.`,
-        type: 'status'
-      });
-      await notif.save();
-
-      if (userSockets[booking.userId]) {
-        io.to(userSockets[booking.userId]).emit('new_notification', notif);
-      }
-
-      res.json(booking);
-    } catch (error) {
-      res.status(500).json({ message: 'Error updating status' });
-    }
-  }
-);
-
-// Secure chat route with verifyChatAccess
-app.get('/api/chat/:bookingId', auth, auth.verifyChatAccess, async (req, res) => {
+app.patch('/api/bookings/:id/cancel', auth, checkRole('client'), async (req, res) => {
   try {
-    const msgs = await Message.find({
-      bookingId: req.params.bookingId
-    }).sort({ createdAt: 1 });
-    res.json(msgs);
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    const booking = await Booking.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user.id },
+      { status: 'cancelled' },
+      { new: true }
+    );
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+    res.json(booking);
+  } catch (err) {
+    res.status(500).json({ message: 'Cancellation failed' });
   }
 });
 
+app.patch('/api/admin/bookings/:id/status', auth, checkRole('admin', 'professional'), async (req, res) => {
+  try {
+    const booking = await Booking.findByIdAndUpdate(
+      req.params.id,
+      { status: req.body.status },
+      { new: true }
+    );
+    
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+    // Notify the client about the status change
+    await createNotification(
+      booking.userId,
+      'Booking Update',
+      `Your booking with ${booking.professionalName} is now ${req.body.status}.`
+    );
+
+    res.json(booking);
+  } catch (err) {
+    res.status(500).json({ message: 'Update failed' });
+  }
+});
+
+// ==========================================
+// 8. NOTIFICATION & CHAT ROUTES
+// ==========================================
 app.get('/api/notifications', auth, async (req, res) => {
   try {
-    const notifs = await Notification.find({ userId: req.user.id })
-      .sort({ createdAt: -1 })
-      .limit(30);
-    res.json(notifs);
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    const notifications = await Notification.find({ userId: req.user.id }).sort({ createdAt: -1 });
+    res.json(notifications);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch notifications' });
   }
 });
 
 app.patch('/api/notifications/read', auth, async (req, res) => {
   try {
-    await Notification.updateMany(
-      { userId: req.user.id, isRead: false },
-      { isRead: true }
-    );
+    await Notification.updateMany({ userId: req.user.id, isRead: false }, { isRead: true });
     res.json({ message: 'Marked as read' });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to update notifications' });
   }
 });
 
-// ==========================================
-// 6. START SERVER
-// ==========================================
+app.get('/api/chat/:bookingId', auth, async (req, res) => {
+  try {
+    const messages = await Message.find({ bookingId: req.params.bookingId }).sort({ createdAt: 1 });
+    res.json(messages);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch chat history' });
+  }
+});
+
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () =>
-  console.log(`🚀 Server running on port ${PORT}`)
-);
+server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
