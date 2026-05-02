@@ -90,34 +90,62 @@ io.on('connection', (socket) => {
 
   socket.on('join_room', (room) => socket.join(room));
 
+  // --- Read Receipts (ID Based) ---
+  socket.on('mark_messages_read', async ({ bookingId, userId }) => {
+    try {
+      // Update all messages in this room NOT sent by the current userId
+      await Message.updateMany(
+        { 
+          bookingId: bookingId, 
+          senderId: { $ne: String(userId) }, 
+          isRead: false 
+        },
+        { $set: { isRead: true } }
+      );
+
+      // Notify the other user in the room that their messages were read
+      socket.to(bookingId).emit('messages_read_update', { bookingId });
+    } catch (err) {
+      console.error('Read receipt error:', err);
+    }
+  });
+
+  // --- Send Message ---
   socket.on('send_message', async (data) => {
     try {
+      // Figure out the strict ID of the sender
+      const effectiveSenderId = data.senderId || (socket.userId ? String(socket.userId) : null);
+
+      if (!effectiveSenderId) {
+        console.warn('send_message aborted: No senderId provided.');
+        return;
+      }
+
+      // Save the message to DB using the ID
       await new Message({
         bookingId: data.room,
+        senderId: effectiveSenderId, // Saves the unique ID to the database
         author: data.author || 'User',
         message: data.message || '',
         time: data.time
+        // isRead defaults to false automatically
       }).save();
 
+      // Emit to the other person in the room
       socket.to(data.room).emit('receive_message', data);
 
+      // --- Notification Logic ---
       const booking = await Booking.findById(data.room);
       if (!booking) return;
-
-      const effectiveSenderId =
-        data.senderId || (socket.userId ? String(socket.userId) : null);
-
-      if (!effectiveSenderId) {
-        console.warn('send_message without senderId, skipping notification');
-        return;
-      }
 
       let recipientUserId = null;
 
       if (String(effectiveSenderId) === String(booking.userId)) {
+        // Sender is client, notify the pro
         const proProfile = await Professional.findOne({ _id: booking.professionalId });
         if (proProfile) recipientUserId = proProfile.userId;
       } else {
+        // Sender is pro, notify the client
         recipientUserId = booking.userId;
       }
 
@@ -584,7 +612,8 @@ app.patch(
   }
 );
 
-app.get('/api/chat/:bookingId', auth, async (req, res) => {
+// Secure chat route with verifyChatAccess
+app.get('/api/chat/:bookingId', auth, auth.verifyChatAccess, async (req, res) => {
   try {
     const msgs = await Message.find({
       bookingId: req.params.bookingId
