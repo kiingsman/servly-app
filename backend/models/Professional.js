@@ -4,6 +4,7 @@ const professionalSchema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // <-- Link to User account
     name: { type: String, required: true },
     title: { type: String, required: true },
+    headline: { type: String, default: "Professional Services" }, // <-- NEW: Short catchy description for profile
     category: { type: String, required: true },
     price: { type: Number, required: true },
     avatar: { type: String },

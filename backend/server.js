@@ -243,7 +243,7 @@ app.post('/api/signup', async (req, res) => {
 
 app.post('/api/pro-signup', async (req, res) => {
   try {
-    const { name, email, password, title, category, price } = req.body;
+    const { name, email, password, title, category, price, headline } = req.body;
 
     if (await User.findOne({ email })) {
       return res.status(400).json({ message: 'Email in use' });
@@ -267,7 +267,7 @@ app.post('/api/pro-signup', async (req, res) => {
       userId: newUser._id,
       name,
       title,
-      headline: `${title} | Professional Services`,
+      headline: headline || `${title} | Professional Services`, // Support for the new headline field
       category,
       price: numericPrice,
       avatar: `https://ui-avatars.com/api/?name=${name.replace(
@@ -482,6 +482,8 @@ app.put(
   checkRole('professional'),
   async (req, res) => {
     try {
+      // The frontend sends { headline: "...", price: "...", category: "..." }
+      // Using $set: req.body ensures the headline gets updated easily!
       const updated = await Professional.findOneAndUpdate(
         { userId: req.user.id },
         { $set: req.body },
