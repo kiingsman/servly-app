@@ -112,7 +112,46 @@ const useVideoCall = (socket, activeChatRoom, user) => {
 
 const CallUI = ({ callState, localVideoRef, remoteVideoRef, acceptCall, endCall }) => {
     if(callState.status === 'idle') return null;
-    return (<div className="absolute inset-0 bg-gray-900 z-[100] flex flex-col animate-[slideUp_0.3s_ease-out]"><video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover bg-gray-900" />{(callState.status === 'calling' || callState.status === 'connected') && (<div className="absolute top-6 right-6 w-24 h-36 bg-gray-800 rounded-xl overflow-hidden shadow-2xl border-2 border-gray-700"><video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" /></div>)}{callState.status === 'receiving' && (<div className="absolute inset-0 bg-gray-900/90 flex flex-col items-center justify-center p-6 text-center"><div className="w-24 h-24 bg-teal-500 rounded-full animate-bounce flex items-center justify-center text-4xl text-white mb-6 shadow-lg"><i className="fas fa-video"></i></div><h2 className="text-2xl font-bold text-white mb-2">{callState.callerName} is calling...</h2><p className="text-gray-400 mb-12">Incoming Video Call</p><div className="flex gap-8"><button onClick={() => endCall(true)} className="w-16 h-16 bg-red-500 rounded-full text-white text-xl"><i className="fas fa-times"></i></button><button onClick={acceptCall} className="w-16 h-16 bg-green-500 rounded-full text-white text-xl animate-pulse"><i className="fas fa-video"></i></button></div></div>)}{callState.status === 'calling' && (<div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center pointer-events-none bg-gray-900/50"><h2 className="text-2xl font-bold text-white mb-2">Calling...</h2><p className="text-gray-300">Waiting for answer</p></div>)}{(callState.status === 'calling' || callState.status === 'connected') && (<div className="absolute bottom-10 left-0 w-full flex justify-center"><button onClick={() => endCall(true)} className="w-16 h-16 bg-red-500 rounded-full text-white text-2xl shadow-lg"><i className="fas fa-phone-slash"></i></button></div>)}</div>);
+    return (
+        <div className="absolute inset-0 bg-gray-900 z-[100] flex flex-col animate-[slideUp_0.3s_ease-out]">
+            <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover bg-gray-900" />
+            {(callState.status === 'calling' || callState.status === 'connected') && (
+                <div className="absolute top-6 right-6 w-24 h-36 bg-gray-800 rounded-xl overflow-hidden shadow-2xl border-2 border-gray-700">
+                    <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                </div>
+            )}
+            {callState.status === 'receiving' && (
+                <div className="absolute inset-0 bg-gray-900/90 flex flex-col items-center justify-center p-6 text-center">
+                    <div className="w-24 h-24 bg-teal-500 rounded-full animate-bounce flex items-center justify-center text-4xl text-white mb-6 shadow-lg">
+                        <i className="fas fa-video"></i>
+                    </div>
+                    <h2 className="text-2xl font-bold text-white mb-2">{callState.callerName} is calling...</h2>
+                    <p className="text-gray-400 mb-12">Incoming Video Call</p>
+                    <div className="flex gap-8">
+                        <button onClick={() => endCall(true)} className="w-16 h-16 bg-red-500 rounded-full text-white text-xl">
+                            <i className="fas fa-times"></i>
+                        </button>
+                        <button onClick={acceptCall} className="w-16 h-16 bg-green-500 rounded-full text-white text-xl animate-pulse">
+                            <i className="fas fa-video"></i>
+                        </button>
+                    </div>
+                </div>
+            )}
+            {callState.status === 'calling' && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center pointer-events-none bg-gray-900/50">
+                    <h2 className="text-2xl font-bold text-white mb-2">Calling...</h2>
+                    <p className="text-gray-300">Waiting for answer</p>
+                </div>
+            )}
+            {(callState.status === 'calling' || callState.status === 'connected') && (
+                <div className="absolute bottom-10 left-0 w-full flex justify-center">
+                    <button onClick={() => endCall(true)} className="w-16 h-16 bg-red-500 rounded-full text-white text-2xl shadow-lg">
+                        <i className="fas fa-phone-slash"></i>
+                    </button>
+                </div>
+            )}
+        </div>
+    );
 };
 
 // ==========================================
@@ -221,7 +260,15 @@ const ClientApp = ({ socket }) => {
           console.error("Favorite failed", err); 
       } 
   };
-  const markNotificationsRead = () => { setShowNotifications(!showNotifications); if (!showNotifications && unreadCount > 0) { fetch(`${backendUrl}/api/notifications/read`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }); setNotifications(Array.isArray(notifications) ? notifications.map(n => ({...n, isRead: true})) : []); } };
+
+  const markNotificationsRead = () => { 
+      setShowNotifications(!showNotifications); 
+      if (!showNotifications && unreadCount > 0) { 
+          fetch(`${backendUrl}/api/notifications/read`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }); 
+          setNotifications(Array.isArray(notifications) ? notifications.map(n => ({...n, isRead: true})) : []); 
+      } 
+  };
+
   const handleBookingSubmit = async (e) => { 
       e.preventDefault(); 
       try {
@@ -301,7 +348,10 @@ const ClientApp = ({ socket }) => {
         <div><h1 className="text-2xl font-black text-primary">Servly</h1><p className="text-xs text-gray-500 font-bold flex items-center"><i className="fas fa-map-marker-alt text-teal-500 mr-1"></i> Kano, NG</p></div>
         <div className="flex items-center gap-3">
             <div className="relative">
-                <button onClick={markNotificationsRead} className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 relative"><i className="fas fa-bell"></i>{unreadCount > 0 && <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>}</button>
+                <button onClick={markNotificationsRead} className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 relative">
+                    <i className="fas fa-bell"></i>
+                    {unreadCount > 0 && <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>}
+                </button>
                 {showNotifications && (
                     <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden z-50">
                         <div className="p-3 bg-gray-50 border-b border-gray-100">
