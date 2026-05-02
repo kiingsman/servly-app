@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext'; // Ensure this path matches your folder structure
 import io from 'socket.io-client';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -511,7 +511,13 @@ const ProfessionalApp = ({ socket }) => {
 const AppContent = () => {
     const { user, token } = useAuth();
     const [socket, setSocket] = useState(null);
-    useEffect(() => { if (user && token && !socket) { const newSocket = io(backendUrl, { auth: { token } }); setSocket(newSocket); return () => newSocket.close(); } }, [user, token, socket]);
+    useEffect(() => { 
+        if (user && token && !socket) { 
+            const newSocket = io(backendUrl, { auth: { token } }); 
+            setSocket(newSocket); 
+            return () => newSocket.close(); 
+        } 
+    }, [user, token, socket]);
     if (!user) return <AuthScreen />;
     return user.role === 'professional' ? <ProfessionalApp socket={socket} /> : <ClientApp socket={socket} />;
 };
