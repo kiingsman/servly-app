@@ -18,7 +18,6 @@ const LiveMapUpdater = ({ center }) => {
     const map = useMap();
     useEffect(() => {
         if (center && center[0] && center[1]) {
-            // Smoothly auto-pan the map camera to follow the moving GPS coordinates
             map.flyTo(center, map.getZoom(), { animate: true, duration: 1.5 });
         }
     }, [center, map]);
@@ -191,7 +190,9 @@ const ClientApp = ({ socket }) => {
   
   const [viewingProfile, setViewingProfile] = useState(null);
   const [bookingPro, setBookingPro] = useState(null);
-  const [bookingData, setBookingData] = useState({ date: '', time: '10:00 AM', address: '' });
+  
+  // FIX: Default time format must be 'HH:mm' for standard input type="time"
+  const [bookingData, setBookingData] = useState({ date: '', time: '10:00', address: '' });
   const [isBookingSuccess, setIsBookingSuccess] = useState(false);
   
   const [messageList, setMessageList] = useState([]);
@@ -201,7 +202,7 @@ const ClientApp = ({ socket }) => {
   const avatarInputRef = useRef(null);
   
   const [isSharingLocation, setIsSharingLocation] = useState(false);
-  const [myLocation, setMyLocation] = useState(null); // NEW: Track my own location
+  const [myLocation, setMyLocation] = useState(null); 
   const [partnerLocation, setPartnerLocation] = useState(null);
   const [viewingLiveMap, setViewingLiveMap] = useState(false);
   const watchIdRef = useRef(null);
@@ -279,10 +280,49 @@ const ClientApp = ({ socket }) => {
       } 
   };
 
-  // Rest of ClientApp helper functions remain exactly the same
   const toggleFavorite = async (e, proId) => { e.stopPropagation(); const isFav = favorites.includes(proId); const method = isFav ? 'DELETE' : 'POST'; try { const res = await fetch(`${backendUrl}/api/user/favorites/${proId}`, { method, headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }}); const data = await res.json(); if (!res.ok) return alert(`Could not save pro`); setFavorites(Array.isArray(data) ? data : []); } catch(err) { console.error(err); } };
   const markNotificationsRead = () => { setShowNotifications(!showNotifications); if (!showNotifications && unreadCount > 0) { fetch(`${backendUrl}/api/notifications/read`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }); setNotifications(Array.isArray(notifications) ? notifications.map(n => ({...n, isRead: true})) : []); } };
-  const handleBookingSubmit = async (e) => { e.preventDefault(); try { const res = await fetch(`${backendUrl}/api/bookings`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, body: JSON.stringify({ professionalId: bookingPro._id || bookingPro.id, professionalName: bookingPro.name, clientName: user.name, date: bookingData.date, time: bookingData.time, address: bookingData.address, totalPrice: bookingPro.price }) }); if (!res.ok) return alert('Booking failed'); setIsBookingSuccess(true); } catch(err) { console.error(err); } };
+  
+  // FIX: Convert 24-hour time to AM/PM formatting for the database and display
+  const formatTimeAMPM = (time24) => {
+      if (!time24) return '';
+      const [h, m] = time24.split(':');
+      const hour = parseInt(h, 10);
+      return `${hour % 12 || 12}:${m} ${hour >= 12 ? 'PM' : 'AM'}`;
+  };
+
+  const handleBookingSubmit = async (e) => { 
+      e.preventDefault(); 
+      try { 
+          const res = await fetch(`${backendUrl}/api/bookings`, { 
+              method: 'POST', 
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, 
+              body: JSON.stringify({ 
+                  professionalId: bookingPro._id || bookingPro.id, 
+                  professionalName: bookingPro.name, 
+                  clientName: user.name, 
+                  date: bookingData.date, 
+                  time: formatTimeAMPM(bookingData.time), // Saves perfectly as "10:00 AM" or "02:30 PM"
+                  address: bookingData.address, 
+                  totalPrice: bookingPro.price 
+              }) 
+          }); 
+          
+          if (!res.ok) {
+              const data = await res.json();
+              if (res.status === 401) {
+                  alert('Session expired. Please log out and log back in.');
+              } else {
+                  alert(data.message || 'Booking failed');
+              }
+              return;
+          } 
+          setIsBookingSuccess(true); 
+      } catch(err) { 
+          console.error(err); 
+      } 
+  };
+  
   const handleCancelBooking = async (id) => { if (!window.confirm("Cancel booking?")) return; const res = await fetch(`${backendUrl}/api/bookings/${id}/cancel`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }); if (res.ok) setMyBookings(prev => prev.map(b => b._id === id ? { ...b, status: 'cancelled' } : b)); };
   const openPrivateChat = async (booking) => { setActiveChatRoom(booking); setMessageList([]); setActiveTab('chat'); if (socket) { socket.emit('join_room', booking._id); socket.emit('mark_messages_read', { bookingId: booking._id, userId: user.id }); } fetch(`${backendUrl}/api/chat/${booking._id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }).then(res => res.json()).then(data => setMessageList(Array.isArray(data) ? data : [])); };
   const sendMessage = async () => { if (currentMessage && activeChatRoom && socket) { const msg = { room: activeChatRoom._id, senderId: user.id, author: user.name, message: currentMessage, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}), isRead: false }; await socket.emit('send_message', msg); setMessageList(list => [...list, msg]); setCurrentMessage(""); } };
@@ -290,7 +330,6 @@ const ClientApp = ({ socket }) => {
   let displayedPros = []; if (activeTab === 'favorites') { displayedPros = professionals.filter(p => favorites.includes(p._id)); } else { displayedPros = selectedCategory ? professionals.filter(p => p.category === selectedCategory) : professionals; }
   const handleAvatarUpload = async (e) => { const file = e.target.files[0]; if (!file) return; const formData = new FormData(); formData.append('avatar', file); try { const res = await fetch(`${backendUrl}/api/user/avatar`, { method: 'POST', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, body: formData }); const data = await res.json(); if (res.ok) { login({ ...user, avatar: data.avatar }, localStorage.getItem('servly_token')); } } catch (err) {} };
 
-  // Calculate live map center (Follows Pro if they share location, otherwise follows Client)
   const mapCenter = partnerLocation ? [partnerLocation.lat, partnerLocation.lng] : myLocation ? [myLocation.lat, myLocation.lng] : [11.9964, 8.5167];
 
   return (
@@ -315,7 +354,6 @@ const ClientApp = ({ socket }) => {
       </div>
       
       <div className="flex-1 overflow-y-auto pb-28 hide-scrollbar">
-        {/* TABS (HOME, BOOKINGS, PROFILE, OVERLAYS) REMAIN THE SAME */}
         {activeTab === 'home' && (
           <div className="px-6 pt-6">
             <div className="relative mb-6 shadow-sm"><i className="fas fa-search absolute left-4 top-3.5 text-gray-400"></i><input type="text" placeholder="Search services..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white py-3.5 pl-12 pr-4 rounded-2xl text-sm outline-none border border-gray-100" /></div>
@@ -344,7 +382,6 @@ const ClientApp = ({ socket }) => {
                 <button onClick={sendMessage} className="w-10 h-10 bg-primary text-white rounded-full flex items-center justify-center shadow-md"><i className="fas fa-paper-plane"></i></button>
             </div>
 
-            {/* FULLY UPDATED UBER-LIKE LIVE MAP FOR CLIENT */}
             {viewingLiveMap && (
               <div className="absolute inset-0 bg-white z-30 flex flex-col">
                   <div className="p-4 flex justify-between items-center bg-white shadow-sm z-40">
@@ -355,32 +392,11 @@ const ClientApp = ({ socket }) => {
                       <MapContainer center={mapCenter} zoom={15} style={{ height: '100%', width: '100%' }}>
                           <LiveMapUpdater center={mapCenter} />
                           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                          
-                          {/* Client's Location */}
-                          {myLocation && (
-                              <Marker position={[myLocation.lat, myLocation.lng]}>
-                                  <Popup>Your Location</Popup>
-                              </Marker>
-                          )}
-                          
-                          {/* Professional's Location */}
-                          {partnerLocation && (
-                              <Marker position={[partnerLocation.lat, partnerLocation.lng]}>
-                                  <Popup>{partnerLocation.author} (Professional)</Popup>
-                              </Marker>
-                          )}
+                          {myLocation && (<Marker position={[myLocation.lat, myLocation.lng]}><Popup>Your Location</Popup></Marker>)}
+                          {partnerLocation && (<Marker position={[partnerLocation.lat, partnerLocation.lng]}><Popup>{partnerLocation.author} (Professional)</Popup></Marker>)}
                       </MapContainer>
-                      
-                      {!partnerLocation && (
-                          <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-gray-900/80 text-white px-4 py-2 rounded-full text-xs font-bold z-[400] shadow-lg animate-pulse">
-                              Waiting for Pro's GPS signal...
-                          </div>
-                      )}
-
-                      <button onClick={toggleLocationSharing} className={`absolute bottom-6 flex items-center gap-2 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full text-white font-bold text-sm shadow-xl z-[400] ${isSharingLocation ? 'bg-red-500' : 'bg-primary'}`}>
-                          <i className={`fas ${isSharingLocation ? 'fa-stop-circle' : 'fa-location-arrow'}`}></i>
-                          {isSharingLocation ? 'Stop Sharing' : 'Share My Location'}
-                      </button>
+                      {!partnerLocation && (<div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-gray-900/80 text-white px-4 py-2 rounded-full text-xs font-bold z-[400] shadow-lg animate-pulse">Waiting for Pro's GPS signal...</div>)}
+                      <button onClick={toggleLocationSharing} className={`absolute bottom-6 flex items-center gap-2 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full text-white font-bold text-sm shadow-xl z-[400] ${isSharingLocation ? 'bg-red-500' : 'bg-primary'}`}><i className={`fas ${isSharingLocation ? 'fa-stop-circle' : 'fa-location-arrow'}`}></i>{isSharingLocation ? 'Stop Sharing' : 'Share My Location'}</button>
                   </div>
               </div>
             )}
@@ -417,7 +433,7 @@ const ProfessionalApp = ({ socket }) => {
     const [viewingMapForJob, setViewingMapForJob] = useState(null); 
     const [mapPosition, setMapPosition] = useState([11.9964, 8.5167]); 
     const [isSharingLocation, setIsSharingLocation] = useState(false); 
-    const [myLocation, setMyLocation] = useState(null); // NEW: Track my own location
+    const [myLocation, setMyLocation] = useState(null); 
     const [partnerLocation, setPartnerLocation] = useState(null); 
     const watchIdRef = useRef(null); 
     
@@ -488,7 +504,6 @@ const ProfessionalApp = ({ socket }) => {
     
     const handleSaveProfile = async (e) => { e.preventDefault(); setIsSaving(true); try { const res = await fetch(`${backendUrl}/api/pro/profile`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, body: JSON.stringify(editForm) }); const data = await res.json(); if (!res.ok) return alert('Save failed'); setMyProfile(data); setIsEditingProfile(false); } catch(err) {} finally { setIsSaving(false); } };
     
-    // Pro Map Center dynamically follows the Professional if live tracking is on
     const proMapCenter = myLocation ? [myLocation.lat, myLocation.lng] : mapPosition;
 
     return (
@@ -500,7 +515,6 @@ const ProfessionalApp = ({ socket }) => {
             
             {activeTab === 'profile' && (<div className="flex-1 overflow-y-auto px-6 pt-10 pb-28"><h2 className="text-2xl font-bold mb-6">Pro Dashboard</h2>{isEditingProfile ? (<form onSubmit={handleSaveProfile} className="bg-gray-800 p-6 rounded-3xl mb-6"><h3 className="font-bold mb-4 text-teal-400 border-b border-gray-700 pb-2">Edit Public Profile</h3><div className="mb-4"><label className="text-xs text-gray-400 font-bold">Headline (e.g., Expert Electrician)</label><input type="text" value={editForm.headline || ''} onChange={e => setEditForm({...editForm, headline: e.target.value})} className="w-full bg-gray-700 border-none p-3 rounded-xl mt-1 text-sm text-white outline-none focus:ring-1 focus:ring-teal-500" /></div><div className="mb-4"><label className="text-xs text-gray-400 font-bold">Category</label><select value={editForm.category || ''} onChange={e => setEditForm({...editForm, category: e.target.value})} className="w-full bg-gray-700 border-none p-3 rounded-xl mt-1 text-sm text-white outline-none"><option value="cleaning">Cleaning</option><option value="electric">Electric</option><option value="plumbing">Plumbing</option><option value="ac">AC Repair</option><option value="tech">Tech & IT</option></select></div><div className="mb-6"><label className="text-xs text-gray-400 font-bold">Hourly Rate (₦)</label><input type="number" value={editForm.price || ''} onChange={e => setEditForm({...editForm, price: e.target.value})} className="w-full bg-gray-700 border-none p-3 rounded-xl mt-1 text-sm text-white outline-none focus:ring-1 focus:ring-teal-500" /></div><div className="flex gap-3"><button type="button" onClick={() => setIsEditingProfile(false)} className="flex-1 py-3 bg-gray-700 text-white rounded-xl font-bold text-sm">Cancel</button><button type="submit" disabled={isSaving} className="flex-1 py-3 bg-teal-600 text-white rounded-xl font-bold text-sm shadow-lg">{isSaving ? 'Saving...' : 'Save Profile'}</button></div></form>) : myProfile && (<div className="bg-gray-800 p-6 rounded-3xl flex flex-col items-center mb-6 text-center"><img src={myProfile.avatar || `https://ui-avatars.com/api/?name=${myProfile.name.replace(/ /g,'+')}&background=0D8ABC&color=fff`} className="w-20 h-20 rounded-full object-cover mb-4 ring-2 ring-teal-500 ring-offset-2 ring-offset-gray-800" alt="Avatar" /><h3 className="text-xl font-bold">{myProfile.name}</h3><p className="text-teal-400 text-sm font-bold mb-3">{myProfile.headline || myProfile.title}</p><div className="flex gap-4 text-xs font-bold text-gray-400 mb-6"><span className="bg-gray-700 px-3 py-1 rounded-lg">₦{myProfile.price}/hr</span><span className="bg-gray-700 px-3 py-1 rounded-lg"><i className="fas fa-star text-orange-400 mr-1"></i> {myProfile.rating}</span></div><button onClick={() => setIsEditingProfile(true)} className="w-full py-3 bg-gray-700 text-white rounded-xl font-bold text-sm border border-gray-600 mb-3"><i className="fas fa-edit mr-2"></i> Edit Profile</button><button onClick={logout} className="w-full py-3 bg-red-500/10 text-red-500 font-bold rounded-xl border border-red-500/20"><i className="fas fa-sign-out-alt mr-2"></i> Log Out</button></div>)}</div>)}
 
-            {/* FULLY UPDATED UBER-LIKE LIVE MAP FOR PRO */}
             {viewingMapForJob && (
               <div className="absolute inset-0 bg-gray-900 z-50 flex flex-col animate-[slideUp_0.3s_ease-out]">
                   <div className="bg-gray-800 px-6 py-4 flex items-center shadow-sm z-10 relative">
@@ -514,32 +528,11 @@ const ProfessionalApp = ({ socket }) => {
                       <MapContainer center={proMapCenter} zoom={15} style={{ height: '100%', width: '100%', zIndex: 0 }}>
                           <LiveMapUpdater center={proMapCenter} />
                           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                          
-                          {/* Fixed Job Destination */}
-                          <Marker position={mapPosition}>
-                              <Popup>Destination: {viewingMapForJob.address}</Popup>
-                          </Marker>
-
-                          {/* My Live Moving Location */}
-                          {myLocation && (
-                              <Marker position={[myLocation.lat, myLocation.lng]}>
-                                  <Popup>You (Live)</Popup>
-                              </Marker>
-                          )}
-
-                          {/* Client's Live Moving Location */}
-                          {partnerLocation && (
-                              <Marker position={[partnerLocation.lat, partnerLocation.lng]}>
-                                  <Popup>Client (Live)</Popup>
-                              </Marker>
-                          )}
+                          <Marker position={mapPosition}><Popup>Destination: {viewingMapForJob.address}</Popup></Marker>
+                          {myLocation && (<Marker position={[myLocation.lat, myLocation.lng]}><Popup>You (Live)</Popup></Marker>)}
+                          {partnerLocation && (<Marker position={[partnerLocation.lat, partnerLocation.lng]}><Popup>Client (Live)</Popup></Marker>)}
                       </MapContainer>
-
-                      {!myLocation && isSharingLocation && (
-                          <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-teal-500 text-white px-4 py-2 rounded-full text-xs font-bold z-[400] shadow-lg animate-pulse">
-                              Finding GPS Signal...
-                          </div>
-                      )}
+                      {!myLocation && isSharingLocation && (<div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-teal-500 text-white px-4 py-2 rounded-full text-xs font-bold z-[400] shadow-lg animate-pulse">Finding GPS Signal...</div>)}
                   </div>
               </div>
             )}
