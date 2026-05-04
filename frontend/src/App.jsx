@@ -17,7 +17,7 @@ const backendUrl = rawUrl.replace(/\/$/, "");
 const Pagination = ({ currentPage, totalPages, onPageChange }) => {
     if (totalPages <= 1) return null;
     return (
-        <div className="flex justify-between items-center mt-auto pt-6 mb-2 w-full">
+        <div className="flex justify-between items-center mt-8 mb-2 w-full">
             <button disabled={currentPage === 1} onClick={() => onPageChange(currentPage - 1)} className="px-4 py-2 bg-gray-100 text-gray-600 rounded-xl disabled:opacity-30 font-bold text-xs transition active:scale-95 shadow-sm"><i className="fas fa-chevron-left mr-1"></i> Prev</button>
             <span className="text-xs font-bold text-gray-400 bg-gray-50 px-3 py-1.5 rounded-lg">Page {currentPage} of {totalPages}</span>
             <button disabled={currentPage === totalPages} onClick={() => onPageChange(currentPage + 1)} className="px-4 py-2 bg-gray-100 text-gray-600 rounded-xl disabled:opacity-30 font-bold text-xs transition active:scale-95 shadow-sm">Next <i className="fas fa-chevron-right ml-1"></i></button>
@@ -227,7 +227,7 @@ const ClientApp = ({ socket, token }) => {
   
   const [proPage, setProPage] = useState(1);
   const [bookingPage, setBookingPage] = useState(1);
-  const ITEMS_PER_PAGE = 8;
+  const ITEMS_PER_PAGE = 4; // <--- Restored back to 4 so pagination shows up!
   
   const [viewingProfile, setViewingProfile] = useState(null);
   const [bookingPro, setBookingPro] = useState(null);
@@ -455,7 +455,7 @@ const ClientApp = ({ socket, token }) => {
         </div>
       </div>
       
-      {/* INDEPENDENTLY SCROLLING TABS (Fixes layout collapse) */}
+      {/* INDEPENDENTLY SCROLLING TABS */}
       <div className="flex-1 w-full h-full flex flex-col overflow-hidden relative">
         
         {activeTab === 'home' && (
@@ -493,7 +493,7 @@ const ClientApp = ({ socket, token }) => {
           </div>
         )}
 
-        {/* CHAT TAB WITH ISOLATED FLEX STRUCTURE */}
+        {/* CHAT TAB */}
         {activeTab === 'chat' && activeChatRoom && (
           <div className="flex-1 flex flex-col w-full h-full bg-gray-50">
             <div className="bg-white px-6 py-4 flex justify-between items-center shadow-sm shrink-0 w-full">
@@ -533,7 +533,7 @@ const ClientApp = ({ socket, token }) => {
         )}
       </div>
 
-      {/* OVERLAYS (Guaranteed full-screen overrides) */}
+      {/* OVERLAYS */}
       {viewingProfile && !bookingPro && (
         <div className="absolute inset-0 w-full h-full bg-white z-[60] overflow-y-auto flex flex-col animate-[slideUp_0.3s_ease-out] hide-scrollbar">
             <div className="w-full relative h-64 bg-gray-100 px-6 shrink-0">
@@ -610,7 +610,7 @@ const ClientApp = ({ socket, token }) => {
         </div>
       )}
 
-      {/* FULL WIDTH BOTTOM NAV BAR (Hidden when inside active chat to prevent overlap) */}
+      {/* FULL WIDTH BOTTOM NAV BAR */}
       {!(activeTab === 'chat' && activeChatRoom) && (
           <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 shadow-[0_-10px_40px_rgba(0,0,0,0.03)] z-30 flex justify-around py-4 px-6 pb-6">
               <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center transition hover:scale-110 ${activeTab === 'home' ? 'text-teal-600 scale-110' : 'text-gray-400'}`}><i className="fas fa-home text-xl mb-1"></i><span className="text-[9px] font-bold">Home</span></button>
@@ -632,7 +632,7 @@ const ProfessionalApp = ({ socket, token }) => {
     const [jobs, setJobs] = useState([]); 
     
     const [jobPage, setJobPage] = useState(1);
-    const ITEMS_PER_PAGE = 8;
+    const ITEMS_PER_PAGE = 4; // <--- Restored back to 4 so pagination shows up!
 
     const [activeChatRoom, setActiveChatRoom] = useState(null); 
     const [messageList, setMessageList] = useState([]); 
@@ -773,7 +773,7 @@ const ProfessionalApp = ({ socket, token }) => {
                     </div>
                 )}
                 
-                {/* CHAT TAB (Strict Flex Column) */}
+                {/* CHAT TAB */}
                 {activeTab === 'chat' && activeChatRoom && (
                   <div className="flex-1 flex flex-col w-full h-full bg-gray-900">
                     <div className="bg-gray-800 px-6 py-4 flex justify-between items-center shadow-sm shrink-0 w-full">
@@ -835,7 +835,7 @@ const ProfessionalApp = ({ socket, token }) => {
               </div>
             )}
             
-            {/* FULL WIDTH BOTTOM NAV BAR (Hidden when inside active chat to prevent overlap) */}
+            {/* FULL WIDTH BOTTOM NAV BAR */}
             {!(activeTab === 'chat' && activeChatRoom) && (
                 <div className="absolute bottom-0 w-full bg-gray-800 border-t border-gray-700 z-30 flex justify-around py-4 px-6 pb-6">
                     <button onClick={() => setActiveTab('jobs')} className={`flex flex-col items-center transition hover:scale-110 ${activeTab === 'jobs' ? 'text-teal-400 scale-110' : 'text-gray-500'}`}><i className="fas fa-briefcase text-xl mb-1"></i><span className="text-[9px] font-bold">Jobs</span></button>
