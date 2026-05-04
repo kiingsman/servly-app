@@ -15,6 +15,10 @@ L.Icon.Default.mergeOptions({
 let rawUrl = import.meta.env.VITE_BACKEND_URL || 'https://servly-app-icy0.onrender.com';
 const backendUrl = rawUrl.replace(/\/$/, "");
 
+// Audio URLs (Royalty free Mixkit placeholders)
+const NOTIF_SOUND_URL = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
+const RINGTONE_URL = 'https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3';
+
 // ==========================================
 // REUSABLE PAGINATION COMPONENT
 // ==========================================
@@ -72,6 +76,26 @@ const useVideoCall = (socket, activeChatRoom, user) => {
   const remoteVideoRef = useRef(null);
   const peerConnection = useRef(null);
   const localStream = useRef(null);
+  const ringtoneAudio = useRef(new Audio(RINGTONE_URL));
+
+  // Handle Ringtone Setup
+  useEffect(() => {
+    ringtoneAudio.current.loop = true;
+    return () => {
+      ringtoneAudio.current.pause();
+    };
+  }, []);
+
+  // Play/Pause Ringtone based on call status
+  useEffect(() => {
+    if (callState.status === 'receiving') {
+      // Catch prevents error if browser blocks autoplay
+      ringtoneAudio.current.play().catch(e => console.warn('Ringtone autoplay blocked by browser', e));
+    } else {
+      ringtoneAudio.current.pause();
+      ringtoneAudio.current.currentTime = 0;
+    }
+  }, [callState.status]);
 
   useEffect(() => {
     return () => {
@@ -224,12 +248,7 @@ const AuthScreen = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [isProMode, setIsProMode] = useState(false);
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-    title: '',
-    category: 'cleaning',
-    price: ''
+    name: '', email: '', password: '', title: '', category: 'cleaning', price: ''
   });
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -456,6 +475,11 @@ const ClientApp = ({ socket, token }) => {
 
   const callLogic = useVideoCall(socket, activeChatRoom, user);
 
+  const playNotificationSound = () => {
+    const audio = new Audio(NOTIF_SOUND_URL);
+    audio.play().catch(e => console.warn('Audio blocked', e));
+  };
+
   useEffect(() => {
     setProPage(1);
   }, [searchQuery, selectedCategory, activeTab]);
@@ -494,6 +518,9 @@ const ClientApp = ({ socket, token }) => {
       setMessageList(list => [...list, data]);
       if (activeChatRoom && data.room === activeChatRoom._id) {
         socket.emit('mark_messages_read', { bookingId: activeChatRoom._id, userId: user.id });
+      } else {
+        // Play notification if not in the active chat
+        playNotificationSound();
       }
     };
 
@@ -508,6 +535,7 @@ const ClientApp = ({ socket, token }) => {
 
     const onNewNotification = (notif) => {
       setNotifications(prev => [notif, ...prev]);
+      playNotificationSound(); // Play sound for new system notifications
     };
 
     socket.on('receive_message', onReceiveMessage);
@@ -615,25 +643,21 @@ const ClientApp = ({ socket, token }) => {
     }
   };
 
-  // NEW: click opens exact booking if bookingId is present
   const handleNotificationClick = (n) => {
     setShowNotifications(false);
 
     if (n.bookingId) {
       const booking = myBookings.find(b => b._id === n.bookingId);
       if (booking) {
-        // If it's a message-type notification, jump straight into that booking's chat
         if (n.type === 'message' || (n.title && n.title.toLowerCase().includes('message'))) {
           openPrivateChat(booking);
         } else {
-          // For other notifications, go to Bookings; you can later add scroll-to-booking
           setActiveTab('bookings');
         }
         return;
       }
     }
 
-    // fallback behaviour if no bookingId or booking not found
     if (n.title && n.title.toLowerCase().includes('message')) {
       setActiveTab('chat');
     } else {
@@ -858,13 +882,9 @@ const ClientApp = ({ socket, token }) => {
               {categories.map(cat => (
                 <div
                   key={cat.id}
-                  onClick={() =>
-                    setSelectedCategory(selectedCategory === cat.id ? null : cat.id)
-                  }
+                  onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)}
                   className={`flex flex-col items-center justify-center p-3 rounded-2xl cursor-pointer transition ${
-                    selectedCategory === cat.id
-                      ? 'bg-teal-600 text-white shadow-md'
-                      : `${cat.bg} ${cat.color}`
+                    selectedCategory === cat.id ? 'bg-teal-600 text-white shadow-md' : `${cat.bg} ${cat.color}`
                   }`}
                 >
                   <i className={`fas ${cat.icon} text-xl mb-2`}></i>
@@ -893,10 +913,7 @@ const ClientApp = ({ socket, token }) => {
                     <img
                       src={
                         pro.avatar ||
-                        `https://ui-avatars.com/api/?name=${pro.name.replace(
-                          / /g,
-                          '+'
-                        )}&background=0D8ABC&color=fff`
+                        `https://ui-avatars.com/api/?name=${pro.name.replace(/ /g, '+')}&background=0D8ABC&color=fff`
                       }
                       className="w-16 h-16 rounded-2xl object-cover"
                       alt={pro.name}
@@ -926,30 +943,19 @@ const ClientApp = ({ socket, token }) => {
                       onClick={e => toggleFavorite(e, pro._id)}
                       className="text-gray-300 hover:text-red-500"
                     >
-                      <i
-                        className={`${
-                          favorites.includes(pro._id) ? 'fas text-red-500' : 'far'
-                        } fa-heart text-lg`}
-                      ></i>
+                      <i className={`${favorites.includes(pro._id) ? 'fas text-red-500' : 'far'} fa-heart text-lg`}></i>
                     </button>
                     <p className="font-black text-gray-800 mt-3">
-                      ₦{pro.price}
-                      <span className="text-[10px] text-gray-400 font-medium">/hr</span>
+                      ₦{pro.price}<span className="text-[10px] text-gray-400 font-medium">/hr</span>
                     </p>
                   </div>
                 </div>
               ))}
             </div>
             {paginatedPros.length === 0 && (
-              <p className="text-center text-sm text-gray-400 py-8">
-                No professionals found.
-              </p>
+              <p className="text-center text-sm text-gray-400 py-8">No professionals found.</p>
             )}
-            <Pagination
-              currentPage={proPage}
-              totalPages={totalProPages}
-              onPageChange={setProPage}
-            />
+            <Pagination currentPage={proPage} totalPages={totalProPages} onPageChange={setProPage} />
           </div>
         )}
 
@@ -957,25 +963,17 @@ const ClientApp = ({ socket, token }) => {
           <div className="flex-1 overflow-y-auto px-6 pt-6 pb-28 flex flex-col w-full hide-scrollbar">
             <h2 className="text-2xl font-bold mb-6">My Bookings</h2>
             {paginatedBookings.map(b => (
-              <div
-                key={b._id}
-                className="w-full bg-white p-4 rounded-2xl mb-4 shadow-sm border border-gray-100"
-              >
+              <div key={b._id} className="w-full bg-white p-4 rounded-2xl mb-4 shadow-sm border border-gray-100">
                 <div className="flex justify-between items-start mb-3 border-b border-gray-50 pb-3 w-full">
                   <div>
                     <h3 className="font-bold text-gray-800">{b.professionalName}</h3>
-                    <p className="text-xs text-gray-500">
-                      {b.date} at {b.time}
-                    </p>
+                    <p className="text-xs text-gray-500">{b.date} at {b.time}</p>
                   </div>
                   <div
                     className={`px-2 py-1 rounded text-[10px] uppercase font-bold ${
-                      b.status === 'confirmed'
-                        ? 'bg-green-100 text-green-600'
-                        : b.status === 'completed'
-                        ? 'bg-blue-100 text-blue-600'
-                        : b.status === 'cancelled'
-                        ? 'bg-red-100 text-red-600'
+                      b.status === 'confirmed' ? 'bg-green-100 text-green-600'
+                        : b.status === 'completed' ? 'bg-blue-100 text-blue-600'
+                        : b.status === 'cancelled' ? 'bg-red-100 text-red-600'
                         : 'bg-orange-100 text-orange-600'
                     }`}
                   >
@@ -1001,15 +999,9 @@ const ClientApp = ({ socket, token }) => {
               </div>
             ))}
             {paginatedBookings.length === 0 && (
-              <p className="text-center text-sm text-gray-400 py-8 w-full">
-                You have no bookings.
-              </p>
+              <p className="text-center text-sm text-gray-400 py-8 w-full">You have no bookings.</p>
             )}
-            <Pagination
-              currentPage={bookingPage}
-              totalPages={totalBookingPages}
-              onPageChange={setBookingPage}
-            />
+            <Pagination currentPage={bookingPage} totalPages={totalBookingPages} onPageChange={setBookingPage} />
           </div>
         )}
 
@@ -1024,9 +1016,7 @@ const ClientApp = ({ socket, token }) => {
                   <i className="fas fa-arrow-left"></i>
                 </button>
                 <div>
-                  <h3 className="font-bold text-gray-800 text-sm">
-                    {activeChatRoom.professionalName}
-                  </h3>
+                  <h3 className="font-bold text-gray-800 text-sm">{activeChatRoom.professionalName}</h3>
                   <p className="text-[10px] text-teal-600 font-bold">Booking Chat</p>
                 </div>
               </div>
@@ -1047,26 +1037,16 @@ const ClientApp = ({ socket, token }) => {
                   <div
                     key={i}
                     className={`max-w-[75%] p-3 rounded-2xl text-sm shadow-sm ${
-                      isMe
-                        ? 'bg-teal-600 text-white self-end rounded-br-sm'
-                        : 'bg-white text-gray-800 self-start rounded-bl-sm border border-gray-100'
+                      isMe ? 'bg-teal-600 text-white self-end rounded-br-sm' : 'bg-white text-gray-800 self-start rounded-bl-sm border border-gray-100'
                     }`}
                   >
                     <p>{msg.message}</p>
                     <div className="flex items-center justify-end mt-1 gap-1">
-                      <span
-                        className={`text-[9px] ${
-                          isMe ? 'text-teal-100' : 'text-gray-400'
-                        }`}
-                      >
+                      <span className={`text-[9px] ${isMe ? 'text-teal-100' : 'text-gray-400'}`}>
                         {msg.time}
                       </span>
                       {isMe && (
-                        <span
-                          className={`text-[10px] ${
-                            msg.isRead ? 'text-blue-300' : 'text-teal-200'
-                          }`}
-                        >
+                        <span className={`text-[10px] ${msg.isRead ? 'text-blue-300' : 'text-teal-200'}`}>
                           {msg.isRead ? '✓✓' : '✓'}
                         </span>
                       )}
@@ -1136,13 +1116,7 @@ const ClientApp = ({ socket, token }) => {
               />
               <div className="relative mb-4">
                 <img
-                  src={
-                    user.avatar ||
-                    `https://ui-avatars.com/api/?name=${user.name.replace(
-                      / /g,
-                      '+'
-                    )}&background=0D8ABC&color=fff`
-                  }
+                  src={user.avatar || `https://ui-avatars.com/api/?name=${user.name.replace(/ /g, '+')}&background=0D8ABC&color=fff`}
                   className="w-24 h-24 rounded-full object-cover shadow-md"
                   alt="Avatar"
                 />
@@ -1171,13 +1145,7 @@ const ClientApp = ({ socket, token }) => {
         <div className="absolute inset-0 w-full h-full bg-white z-[60] overflow-y-auto flex flex-col animate-[slideUp_0.3s_ease-out] hide-scrollbar">
           <div className="w-full relative h-64 bg-gray-100 px-6 shrink-0">
             <img
-              src={
-                viewingProfile.avatar ||
-                `https://ui-avatars.com/api/?name=${viewingProfile.name.replace(
-                  / /g,
-                  '+'
-                )}&background=0D8ABC&color=fff`
-              }
+              src={viewingProfile.avatar || `https://ui-avatars.com/api/?name=${viewingProfile.name.replace(/ /g, '+')}&background=0D8ABC&color=fff`}
               className="absolute inset-0 w-full h-full object-cover"
               alt="Profile"
             />
@@ -1194,31 +1162,22 @@ const ClientApp = ({ socket, token }) => {
               <div className="flex justify-between items-start mb-4">
                 <div>
                   <h2 className="text-2xl font-black text-gray-800">{viewingProfile.name}</h2>
-                  <p className="text-teal-600 font-bold mt-1 text-sm">
-                    {viewingProfile.headline}
-                  </p>
+                  <p className="text-teal-600 font-bold mt-1 text-sm">{viewingProfile.headline}</p>
                 </div>
                 <div className="bg-teal-50 text-teal-600 px-3 py-1.5 rounded-xl font-black text-sm flex-shrink-0">
-                  ₦{viewingProfile.price}
-                  <span className="text-[10px] text-teal-600/60 ml-1">/hr</span>
+                  ₦{viewingProfile.price}<span className="text-[10px] text-teal-600/60 ml-1">/hr</span>
                 </div>
               </div>
               <div className="flex gap-4 mb-6 text-sm font-bold text-gray-600 w-full">
-                <span className="flex items-center">
-                  <i className="fas fa-star text-orange-400 mr-1.5"></i> {viewingProfile.rating}
-                </span>
-                <span className="flex items-center">
-                  <i className="fas fa-map-marker-alt text-teal-400 mr-1.5"></i>{' '}
-                  {viewingProfile.distance}
-                </span>
+                <span className="flex items-center"><i className="fas fa-star text-orange-400 mr-1.5"></i> {viewingProfile.rating}</span>
+                <span className="flex items-center"><i className="fas fa-map-marker-alt text-teal-400 mr-1.5"></i> {viewingProfile.distance}</span>
                 <span className="flex items-center text-blue-500 bg-blue-50 px-2 py-0.5 rounded-lg">
                   <i className="fas fa-check-circle mr-1"></i> Verified
                 </span>
               </div>
               <h3 className="font-bold text-gray-800 mb-3">About</h3>
               <p className="text-sm text-gray-500 leading-relaxed mb-6">
-                Expert {viewingProfile.category} professional with years of experience delivering
-                top-tier service. Committed to quality, punctuality, and client satisfaction.
+                Expert {viewingProfile.category} professional with years of experience delivering top-tier service. Committed to quality, punctuality, and client satisfaction.
               </p>
               <button
                 onClick={() => setBookingPro(viewingProfile)}
@@ -1234,10 +1193,7 @@ const ClientApp = ({ socket, token }) => {
       {bookingPro && !isBookingSuccess && (
         <div className="absolute inset-0 w-full h-full bg-gray-50 z-[70] flex flex-col hide-scrollbar animate-[fadeIn_0.3s_ease-out]">
           <div className="w-full bg-white px-6 py-4 flex items-center shadow-sm shrink-0">
-            <button
-              onClick={() => setBookingPro(null)}
-              className="mr-4 text-gray-400 hover:text-gray-600"
-            >
+            <button onClick={() => setBookingPro(null)} className="mr-4 text-gray-400 hover:text-gray-600">
               <i className="fas fa-arrow-left"></i>
             </button>
             <h2 className="font-bold text-gray-800">Book Service</h2>
@@ -1245,17 +1201,11 @@ const ClientApp = ({ socket, token }) => {
           <div className="w-full flex-1 p-6 overflow-y-auto hide-scrollbar">
             <div className="w-full bg-white p-4 rounded-2xl shadow-sm border border-gray-50 flex items-center mb-6">
               <img
-                src={
-                  bookingPro.avatar ||
-                  `https://ui-avatars.com/api/?name=${bookingPro.name.replace(
-                    / /g,
-                    '+'
-                  )}&background=0D8ABC&color=fff`
-                }
+                src={bookingPro.avatar || `https://ui-avatars.com/api/?name=${bookingPro.name.replace(/ /g, '+')}&background=0D8ABC&color=fff`}
                 className="w-12 h-12 rounded-xl object-cover"
                 alt="Pro"
               />
-            <div className="ml-3">
+              <div className="ml-3">
                 <h3 className="font-bold text-sm text-gray-800">{bookingPro.name}</h3>
                 <p className="text-xs text-gray-500 font-bold">₦{bookingPro.price}/hr</p>
               </div>
@@ -1308,9 +1258,7 @@ const ClientApp = ({ socket, token }) => {
             <i className="fas fa-check"></i>
           </div>
           <h2 className="text-3xl font-black text-white mb-2">Booking Confirmed!</h2>
-          <p className="text-teal-100 mb-10 text-sm font-medium">
-            Your service with {bookingPro?.name} is scheduled.
-          </p>
+          <p className="text-teal-100 mb-10 text-sm font-medium">Your service with {bookingPro?.name} is scheduled.</p>
           <button
             onClick={() => {
               setIsBookingSuccess(false);
@@ -1330,10 +1278,7 @@ const ClientApp = ({ socket, token }) => {
         <div className="absolute inset-0 w-full h-full bg-white z-[90] flex flex-col animate-[slideUp_0.3s_ease-out]">
           <div className="px-6 py-4 flex justify-between items-center bg-white shadow-sm shrink-0 w-full">
             <h3 className="font-bold text-sm">Live Location Tracking</h3>
-            <button
-              onClick={() => setViewingLiveMap(false)}
-              className="text-gray-500 hover:text-gray-800"
-            >
+            <button onClick={() => setViewingLiveMap(false)} className="text-gray-500 hover:text-gray-800">
               <i className="fas fa-times"></i>
             </button>
           </div>
@@ -1373,41 +1318,17 @@ const ClientApp = ({ socket, token }) => {
       {/* BOTTOM NAV */}
       {!(activeTab === 'chat' && activeChatRoom) && (
         <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 shadow-[0_-10px_40px_rgba(0,0,0,0.03)] z-30 flex justify-around py-4 px-6 pb-6">
-          <button
-            onClick={() => setActiveTab('home')}
-            className={`flex flex-col items-center transition hover:scale-110 ${
-              activeTab === 'home' ? 'text-teal-600 scale-110' : 'text-gray-400'
-            }`}
-          >
-            <i className="fas fa-home text-xl mb-1"></i>
-            <span className="text-[9px] font-bold">Home</span>
+          <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center transition hover:scale-110 ${activeTab === 'home' ? 'text-teal-600 scale-110' : 'text-gray-400'}`}>
+            <i className="fas fa-home text-xl mb-1"></i><span className="text-[9px] font-bold">Home</span>
           </button>
-          <button
-            onClick={() => setActiveTab('bookings')}
-            className={`flex flex-col items-center transition hover:scale-110 ${
-              activeTab === 'bookings' ? 'text-teal-600 scale-110' : 'text-gray-400'
-            }`}
-          >
-            <i className="fas fa-calendar-alt text-xl mb-1"></i>
-            <span className="text-[9px] font-bold">Bookings</span>
+          <button onClick={() => setActiveTab('bookings')} className={`flex flex-col items-center transition hover:scale-110 ${activeTab === 'bookings' ? 'text-teal-600 scale-110' : 'text-gray-400'}`}>
+            <i className="fas fa-calendar-alt text-xl mb-1"></i><span className="text-[9px] font-bold">Bookings</span>
           </button>
-          <button
-            onClick={() => setActiveTab('chat')}
-            className={`flex flex-col items-center transition hover:scale-110 ${
-              activeTab === 'chat' ? 'text-teal-600 scale-110' : 'text-gray-400'
-            }`}
-          >
-            <i className="fas fa-comment-dots text-xl mb-1"></i>
-            <span className="text-[9px] font-bold">Chat</span>
+          <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center transition hover:scale-110 ${activeTab === 'chat' ? 'text-teal-600 scale-110' : 'text-gray-400'}`}>
+            <i className="fas fa-comment-dots text-xl mb-1"></i><span className="text-[9px] font-bold">Chat</span>
           </button>
-          <button
-            onClick={() => setActiveTab('profile')}
-            className={`flex flex-col items-center transition hover:scale-110 ${
-              activeTab === 'profile' ? 'text-teal-600 scale-110' : 'text-gray-400'
-            }`}
-          >
-            <i className="fas fa-user text-xl mb-1"></i>
-            <span className="text-[9px] font-bold">Profile</span>
+          <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center transition hover:scale-110 ${activeTab === 'profile' ? 'text-teal-600 scale-110' : 'text-gray-400'}`}>
+            <i className="fas fa-user text-xl mb-1"></i><span className="text-[9px] font-bold">Profile</span>
           </button>
         </div>
       )}
@@ -1417,13 +1338,11 @@ const ClientApp = ({ socket, token }) => {
 
 // ==========================================
 // PROFESSIONAL DASHBOARD
-// (unchanged from your last working version)
 // ==========================================
 const ProfessionalApp = ({ socket, token }) => {
   const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('jobs');
   const [jobs, setJobs] = useState([]);
-
   const [jobPage, setJobPage] = useState(1);
   const ITEMS_PER_PAGE = 4;
 
@@ -1445,6 +1364,11 @@ const ProfessionalApp = ({ socket, token }) => {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [isSaving, setIsSaving] = useState(false);
+
+  const playNotificationSound = () => {
+    const audio = new Audio(NOTIF_SOUND_URL);
+    audio.play().catch(e => console.warn('Audio blocked', e));
+  };
 
   useEffect(() => {
     if (socket && activeChatRoom) {
@@ -1482,6 +1406,9 @@ const ProfessionalApp = ({ socket, token }) => {
       setMessageList(list => [...list, data]);
       if (activeChatRoom && data.room === activeChatRoom._id) {
         socket.emit('mark_messages_read', { bookingId: activeChatRoom._id, userId: user.id });
+      } else {
+        // Play notification if not in the active chat
+        playNotificationSound();
       }
     };
 
@@ -1494,14 +1421,21 @@ const ProfessionalApp = ({ socket, token }) => {
       else setPartnerLocation({ lat: data.lat, lng: data.lng, author: data.author });
     };
 
+    // Listen to new system notifications (e.g. Job accepted/requested)
+    const onNewNotification = () => {
+      playNotificationSound();
+    };
+
     socket.on('receive_message', onReceiveMessage);
     socket.on('messages_read_update', onMessagesReadUpdate);
     socket.on('receive_live_location', onReceiveLocation);
+    socket.on('new_notification', onNewNotification);
 
     return () => {
       socket.off('receive_message', onReceiveMessage);
       socket.off('messages_read_update', onMessagesReadUpdate);
       socket.off('receive_live_location', onReceiveLocation);
+      socket.off('new_notification', onNewNotification);
       if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current);
     };
   }, [socket, activeChatRoom, user.id, token]);
@@ -1572,9 +1506,7 @@ const ProfessionalApp = ({ socket, token }) => {
     setViewingMapForJob(job);
     try {
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-          job.address
-        )}`
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(job.address)}`
       );
       const data = await res.json();
       if (data.length > 0) {
@@ -1660,42 +1592,27 @@ const ProfessionalApp = ({ socket, token }) => {
           <div className="flex-1 overflow-y-auto px-6 pt-10 pb-28 flex flex-col w-full hide-scrollbar">
             <h2 className="text-2xl font-bold mb-6 w-full">My Jobs</h2>
             {paginatedJobs.map(job => (
-              <div
-                key={job._id}
-                className="w-full bg-gray-800 p-5 rounded-2xl mb-4 hover:bg-gray-750 transition shadow-sm"
-              >
+              <div key={job._id} className="w-full bg-gray-800 p-5 rounded-2xl mb-4 hover:bg-gray-750 transition shadow-sm">
                 <div className="flex justify-between mb-3 border-b border-gray-700 pb-3 w-full">
                   <h3 className="font-bold">{job.clientName}</h3>
                   <div className="px-2 py-1 rounded bg-gray-700 text-[10px] uppercase font-bold">
                     {job.status}
                   </div>
                 </div>
-                <button
-                  onClick={() => handleViewMap(job)}
-                  className="bg-gray-700 text-teal-400 px-3 py-1 rounded text-xs mb-4 font-bold shadow-sm flex items-center hover:bg-gray-600 transition"
-                >
+                <button onClick={() => handleViewMap(job)} className="bg-gray-700 text-teal-400 px-3 py-1 rounded text-xs mb-4 font-bold shadow-sm flex items-center hover:bg-gray-600 transition">
                   <i className="fas fa-map-marker-alt mr-2"></i> View Map
                 </button>
                 <div className="flex gap-2 w-full">
-                  <button
-                    onClick={() => openChat(job)}
-                    className="flex-1 py-2 bg-gray-700 text-xs font-bold rounded-lg hover:bg-gray-600 transition"
-                  >
+                  <button onClick={() => openChat(job)} className="flex-1 py-2 bg-gray-700 text-xs font-bold rounded-lg hover:bg-gray-600 transition">
                     Chat
                   </button>
                   {job.status === 'pending' && (
-                    <button
-                      onClick={() => updateJobStatus(job._id, 'confirmed')}
-                      className="flex-1 py-2 bg-teal-600 text-xs font-bold rounded-lg hover:bg-teal-500 transition"
-                    >
+                    <button onClick={() => updateJobStatus(job._id, 'confirmed')} className="flex-1 py-2 bg-teal-600 text-xs font-bold rounded-lg hover:bg-teal-500 transition">
                       Accept
                     </button>
                   )}
                   {job.status === 'confirmed' && (
-                    <button
-                      onClick={() => updateJobStatus(job._id, 'completed')}
-                      className="flex-1 py-2 bg-blue-600 text-xs font-bold rounded-lg hover:bg-blue-500 transition"
-                    >
+                    <button onClick={() => updateJobStatus(job._id, 'completed')} className="flex-1 py-2 bg-blue-600 text-xs font-bold rounded-lg hover:bg-blue-500 transition">
                       Complete
                     </button>
                   )}
@@ -1705,11 +1622,7 @@ const ProfessionalApp = ({ socket, token }) => {
             {paginatedJobs.length === 0 && (
               <p className="text-center text-sm text-gray-500 py-8 w-full">No jobs found.</p>
             )}
-            <Pagination
-              currentPage={jobPage}
-              totalPages={totalJobPages}
-              onPageChange={setJobPage}
-            />
+            <Pagination currentPage={jobPage} totalPages={totalJobPages} onPageChange={setJobPage} />
           </div>
         )}
 
@@ -1717,10 +1630,7 @@ const ProfessionalApp = ({ socket, token }) => {
           <div className="flex-1 flex flex-col w-full h-full bg-gray-900">
             <div className="bg-gray-800 px-6 py-4 flex justify-between items-center shadow-sm shrink-0 w-full">
               <div className="flex items-center">
-                <button
-                  onClick={() => setActiveTab('jobs')}
-                  className="mr-4 text-gray-400 hover:text-white transition"
-                >
+                <button onClick={() => setActiveTab('jobs')} className="mr-4 text-gray-400 hover:text-white transition">
                   <i className="fas fa-arrow-left"></i>
                 </button>
                 <div>
@@ -1729,10 +1639,7 @@ const ProfessionalApp = ({ socket, token }) => {
                 </div>
               </div>
               <div className="flex gap-3">
-                <button
-                  onClick={callLogic.startCall}
-                  className="w-8 h-8 bg-gray-700 text-teal-400 rounded-full flex items-center justify-center text-xs hover:bg-gray-600 transition"
-                >
+                <button onClick={callLogic.startCall} className="w-8 h-8 bg-gray-700 text-teal-400 rounded-full flex items-center justify-center text-xs hover:bg-gray-600 transition">
                   <i className="fas fa-video"></i>
                 </button>
               </div>
@@ -1742,29 +1649,14 @@ const ProfessionalApp = ({ socket, token }) => {
               {messageList.map((msg, i) => {
                 const isMe = msg.senderId === user.id;
                 return (
-                  <div
-                    key={i}
-                    className={`max-w-[75%] p-3 rounded-2xl text-sm shadow-sm ${
-                      isMe
-                        ? 'bg-teal-600 text-white self-end rounded-br-sm'
-                        : 'bg-gray-800 text-gray-200 self-start rounded-bl-sm'
-                    }`}
-                  >
+                  <div key={i} className={`max-w-[75%] p-3 rounded-2xl text-sm shadow-sm ${isMe ? 'bg-teal-600 text-white self-end rounded-br-sm' : 'bg-gray-800 text-gray-200 self-start rounded-bl-sm'}`}>
                     <p>{msg.message}</p>
                     <div className="flex items-center justify-end mt-1 gap-1">
-                      <span
-                        className={`text-[9px] ${
-                          isMe ? 'text-teal-100' : 'text-gray-400'
-                        }`}
-                      >
+                      <span className={`text-[9px] ${isMe ? 'text-teal-100' : 'text-gray-400'}`}>
                         {msg.time}
                       </span>
                       {isMe && (
-                        <span
-                          className={`text-[10px] ${
-                            msg.isRead ? 'text-blue-300' : 'text-teal-200'
-                          }`}
-                        >
+                        <span className={`text-[10px] ${msg.isRead ? 'text-blue-300' : 'text-teal-200'}`}>
                           {msg.isRead ? '✓✓' : '✓'}
                         </span>
                       )}
@@ -1777,12 +1669,7 @@ const ProfessionalApp = ({ socket, token }) => {
 
             <div className="bg-gray-800 py-4 px-6 border-t border-gray-700 flex items-center gap-3 shrink-0 w-full">
               <div className="relative shrink-0">
-                <button
-                  onClick={toggleLocationSharing}
-                  className={`w-10 h-10 rounded-full flex items-center justify-center transition hover:bg-gray-600 ${
-                    isSharingLocation ? 'bg-red-500/20 text-red-500' : 'bg-gray-700 text-gray-400'
-                  }`}
-                >
+                <button onClick={toggleLocationSharing} className={`w-10 h-10 rounded-full flex items-center justify-center transition hover:bg-gray-600 ${isSharingLocation ? 'bg-red-500/20 text-red-500' : 'bg-gray-700 text-gray-400'}`}>
                   <i className="fas fa-map-marker-alt"></i>
                 </button>
                 {isSharingLocation && (
@@ -1797,10 +1684,7 @@ const ProfessionalApp = ({ socket, token }) => {
                 onKeyPress={e => e.key === 'Enter' && sendMessage()}
                 className="flex-1 w-full bg-gray-700 text-white py-3 px-4 rounded-full text-sm outline-none placeholder-gray-400 focus:ring-1 focus:ring-teal-500"
               />
-              <button
-                onClick={sendMessage}
-                className="shrink-0 w-10 h-10 bg-teal-600 text-white rounded-full flex items-center justify-center shadow-md hover:bg-teal-500 transition"
-              >
+              <button onClick={sendMessage} className="shrink-0 w-10 h-10 bg-teal-600 text-white rounded-full flex items-center justify-center shadow-md hover:bg-teal-500 transition">
                 <i className="fas fa-paper-plane"></i>
               </button>
             </div>
@@ -1814,10 +1698,7 @@ const ProfessionalApp = ({ socket, token }) => {
             </div>
             <h3 className="font-bold text-gray-400">No Chat Selected</h3>
             <p className="text-xs mt-1 text-gray-500 text-center">Open a job to start chatting.</p>
-            <button
-              onClick={() => setActiveTab('jobs')}
-              className="mt-6 px-6 py-2 bg-gray-800 text-teal-400 border border-gray-700 rounded-xl font-bold text-xs hover:bg-gray-700 transition"
-            >
+            <button onClick={() => setActiveTab('jobs')} className="mt-6 px-6 py-2 bg-gray-800 text-teal-400 border border-gray-700 rounded-xl font-bold text-xs hover:bg-gray-700 transition">
               Go to Jobs
             </button>
           </div>
@@ -1828,27 +1709,14 @@ const ProfessionalApp = ({ socket, token }) => {
             <h2 className="text-2xl font-bold mb-6 w-full">Pro Dashboard</h2>
             {isEditingProfile ? (
               <form onSubmit={handleSaveProfile} className="w-full bg-gray-800 p-6 rounded-3xl mb-6 shadow-md">
-                <h3 className="font-bold mb-4 text-teal-400 border-b border-gray-700 pb-2">
-                  Edit Public Profile
-                </h3>
+                <h3 className="font-bold mb-4 text-teal-400 border-b border-gray-700 pb-2">Edit Public Profile</h3>
                 <div className="mb-4 w-full">
-                  <label className="text-xs text-gray-400 font-bold">
-                    Headline (e.g., Expert Electrician)
-                  </label>
-                  <input
-                    type="text"
-                    value={editForm.headline || ''}
-                    onChange={e => setEditForm({ ...editForm, headline: e.target.value })}
-                    className="w-full bg-gray-700 border-none p-3 rounded-xl mt-1 text-sm text-white outline-none focus:ring-1 focus:ring-teal-500"
-                  />
+                  <label className="text-xs text-gray-400 font-bold">Headline (e.g., Expert Electrician)</label>
+                  <input type="text" value={editForm.headline || ''} onChange={e => setEditForm({ ...editForm, headline: e.target.value })} className="w-full bg-gray-700 border-none p-3 rounded-xl mt-1 text-sm text-white outline-none focus:ring-1 focus:ring-teal-500" />
                 </div>
                 <div className="mb-4 w-full">
                   <label className="text-xs text-gray-400 font-bold">Category</label>
-                  <select
-                    value={editForm.category || ''}
-                    onChange={e => setEditForm({ ...editForm, category: e.target.value })}
-                    className="w-full bg-gray-700 border-none p-3 rounded-xl mt-1 text-sm text-white outline-none"
-                  >
+                  <select value={editForm.category || ''} onChange={e => setEditForm({ ...editForm, category: e.target.value })} className="w-full bg-gray-700 border-none p-3 rounded-xl mt-1 text-sm text-white outline-none">
                     <option value="cleaning">Cleaning</option>
                     <option value="electric">Electric</option>
                     <option value="plumbing">Plumbing</option>
@@ -1858,66 +1726,27 @@ const ProfessionalApp = ({ socket, token }) => {
                 </div>
                 <div className="mb-6 w-full">
                   <label className="text-xs text-gray-400 font-bold">Hourly Rate (₦)</label>
-                  <input
-                    type="number"
-                    value={editForm.price || ''}
-                    onChange={e => setEditForm({ ...editForm, price: e.target.value })}
-                    className="w-full bg-gray-700 border-none p-3 rounded-xl mt-1 text-sm text-white outline-none focus:ring-1 focus:ring-teal-500"
-                  />
+                  <input type="number" value={editForm.price || ''} onChange={e => setEditForm({ ...editForm, price: e.target.value })} className="w-full bg-gray-700 border-none p-3 rounded-xl mt-1 text-sm text-white outline-none focus:ring-1 focus:ring-teal-500" />
                 </div>
                 <div className="flex gap-3 w-full">
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingProfile(false)}
-                    className="flex-1 py-3 bg-gray-700 text-white rounded-xl font-bold text-sm hover:bg-gray-600 transition"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSaving}
-                    className="flex-1 py-3 bg-teal-600 text-white rounded-xl font-bold text-sm shadow-lg hover:bg-teal-500 transition"
-                  >
-                    {isSaving ? 'Saving...' : 'Save Profile'}
-                  </button>
+                  <button type="button" onClick={() => setIsEditingProfile(false)} className="flex-1 py-3 bg-gray-700 text-white rounded-xl font-bold text-sm hover:bg-gray-600 transition">Cancel</button>
+                  <button type="submit" disabled={isSaving} className="flex-1 py-3 bg-teal-600 text-white rounded-xl font-bold text-sm shadow-lg hover:bg-teal-500 transition">{isSaving ? 'Saving...' : 'Save Profile'}</button>
                 </div>
               </form>
             ) : (
               myProfile && (
                 <div className="w-full bg-gray-800 p-6 rounded-3xl flex flex-col items-center mb-6 text-center mt-auto shadow-md">
-                  <img
-                    src={
-                      myProfile.avatar ||
-                      `https://ui-avatars.com/api/?name=${myProfile.name.replace(
-                        / /g,
-                        '+'
-                      )}&background=0D8ABC&color=fff`
-                    }
-                    className="w-20 h-20 rounded-full object-cover mb-4 ring-2 ring-teal-500 ring-offset-2 ring-offset-gray-800"
-                    alt="Avatar"
-                  />
+                  <img src={myProfile.avatar || `https://ui-avatars.com/api/?name=${myProfile.name.replace(/ /g, '+')}&background=0D8ABC&color=fff`} className="w-20 h-20 rounded-full object-cover mb-4 ring-2 ring-teal-500 ring-offset-2 ring-offset-gray-800" alt="Avatar" />
                   <h3 className="text-xl font-bold">{myProfile.name}</h3>
-                  <p className="text-teal-400 text-sm font-bold mb-3">
-                    {myProfile.headline || myProfile.title}
-                  </p>
+                  <p className="text-teal-400 text-sm font-bold mb-3">{myProfile.headline || myProfile.title}</p>
                   <div className="flex gap-4 text-xs font-bold text-gray-400 mb-6">
-                    <span className="bg-gray-700 px-3 py-1 rounded-lg">
-                      ₦{myProfile.price}/hr
-                    </span>
-                    <span className="bg-gray-700 px-3 py-1 rounded-lg">
-                      <i className="fas fa-star text-orange-400 mr-1"></i> {myProfile.rating}
-                    </span>
+                    <span className="bg-gray-700 px-3 py-1 rounded-lg">₦{myProfile.price}/hr</span>
+                    <span className="bg-gray-700 px-3 py-1 rounded-lg"><i className="fas fa-star text-orange-400 mr-1"></i> {myProfile.rating}</span>
                   </div>
-                  <button
-                    onClick={() => setIsEditingProfile(true)}
-                    className="w-full py-3 bg-gray-700 text-white rounded-xl font-bold text-sm border border-gray-600 mb-3 hover:bg-gray-600 transition"
-                  >
+                  <button onClick={() => setIsEditingProfile(true)} className="w-full py-3 bg-gray-700 text-white rounded-xl font-bold text-sm border border-gray-600 mb-3 hover:bg-gray-600 transition">
                     <i className="fas fa-edit mr-2"></i> Edit Profile
                   </button>
-                  <button
-                    onClick={logout}
-                    className="w-full py-3 bg-red-500/10 text-red-500 font-bold rounded-xl border border-red-500/20 hover:bg-red-500/20 transition"
-                  >
+                  <button onClick={logout} className="w-full py-3 bg-red-500/10 text-red-500 font-bold rounded-xl border border-red-500/20 hover:bg-red-500/20 transition">
                     <i className="fas fa-sign-out-alt mr-2"></i> Log Out
                   </button>
                 </div>
@@ -1930,17 +1759,12 @@ const ProfessionalApp = ({ socket, token }) => {
       {viewingMapForJob && (
         <div className="absolute inset-0 w-full h-full bg-gray-900 z-[80] flex flex-col animate-[slideUp_0.3s_ease-out]">
           <div className="bg-gray-800 px-6 py-4 flex items-center shadow-sm z-10 relative shrink-0 w-full">
-            <button
-              onClick={() => setViewingMapForJob(null)}
-              className="mr-4 text-gray-400 hover:text-white transition"
-            >
+            <button onClick={() => setViewingMapForJob(null)} className="mr-4 text-gray-400 hover:text-white transition">
               <i className="fas fa-arrow-left"></i>
             </button>
             <div>
               <h3 className="font-bold text-white text-sm">Navigation</h3>
-              <p className="text-[10px] text-gray-400 truncate max-w-[200px]">
-                {viewingMapForJob.address}
-              </p>
+              <p className="text-[10px] text-gray-400 truncate max-w-[200px]">{viewingMapForJob.address}</p>
             </div>
           </div>
           <div className="flex-1 w-full relative min-h-0">
@@ -1972,23 +1796,11 @@ const ProfessionalApp = ({ socket, token }) => {
 
       {!(activeTab === 'chat' && activeChatRoom) && (
         <div className="absolute bottom-0 w-full bg-gray-800 border-t border-gray-700 z-30 flex justify-around py-4 px-6 pb-6">
-          <button
-            onClick={() => setActiveTab('jobs')}
-            className={`flex flex-col items-center transition hover:scale-110 ${
-              activeTab === 'jobs' ? 'text-teal-400 scale-110' : 'text-gray-500'
-            }`}
-          >
-            <i className="fas fa-briefcase text-xl mb-1"></i>
-            <span className="text-[9px] font-bold">Jobs</span>
+          <button onClick={() => setActiveTab('jobs')} className={`flex flex-col items-center transition hover:scale-110 ${activeTab === 'jobs' ? 'text-teal-400 scale-110' : 'text-gray-500'}`}>
+            <i className="fas fa-briefcase text-xl mb-1"></i><span className="text-[9px] font-bold">Jobs</span>
           </button>
-          <button
-            onClick={() => setActiveTab('profile')}
-            className={`flex flex-col items-center transition hover:scale-110 ${
-              activeTab === 'profile' ? 'text-teal-400 scale-110' : 'text-gray-500'
-            }`}
-          >
-            <i className="fas fa-user-cog text-xl mb-1"></i>
-            <span className="text-[9px] font-bold">Profile</span>
+          <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center transition hover:scale-110 ${activeTab === 'profile' ? 'text-teal-400 scale-110' : 'text-gray-500'}`}>
+            <i className="fas fa-user-cog text-xl mb-1"></i><span className="text-[9px] font-bold">Profile</span>
           </button>
         </div>
       )}
