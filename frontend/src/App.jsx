@@ -12,6 +12,20 @@ let rawUrl = import.meta.env.VITE_BACKEND_URL || 'https://servly-app-icy0.onrend
 const backendUrl = rawUrl.replace(/\/$/, "");
 
 // ==========================================
+// REUSABLE PAGINATION COMPONENT
+// ==========================================
+const Pagination = ({ currentPage, totalPages, onPageChange }) => {
+    if (totalPages <= 1) return null;
+    return (
+        <div className="flex justify-between items-center mt-6 mb-2 pb-4">
+            <button disabled={currentPage === 1} onClick={() => onPageChange(currentPage - 1)} className="px-4 py-2 bg-gray-100 text-gray-600 rounded-xl disabled:opacity-30 font-bold text-xs transition active:scale-95 shadow-sm"><i className="fas fa-chevron-left mr-1"></i> Prev</button>
+            <span className="text-xs font-bold text-gray-400 bg-gray-50 px-3 py-1.5 rounded-lg">Page {currentPage} of {totalPages}</span>
+            <button disabled={currentPage === totalPages} onClick={() => onPageChange(currentPage + 1)} className="px-4 py-2 bg-gray-100 text-gray-600 rounded-xl disabled:opacity-30 font-bold text-xs transition active:scale-95 shadow-sm">Next <i className="fas fa-chevron-right ml-1"></i></button>
+        </div>
+    );
+};
+
+// ==========================================
 // UBER-LIKE LIVE MAP ENGINE
 // ==========================================
 const LiveMapUpdater = ({ center }) => {
@@ -188,6 +202,11 @@ const ClientApp = ({ socket, token }) => {
   const [professionals, setProfessionals] = useState([]);
   const [myBookings, setMyBookings] = useState([]);
   
+  // PAGINATION STATES
+  const [proPage, setProPage] = useState(1);
+  const [bookingPage, setBookingPage] = useState(1);
+  const ITEMS_PER_PAGE = 4;
+  
   const [viewingProfile, setViewingProfile] = useState(null);
   const [bookingPro, setBookingPro] = useState(null);
   
@@ -214,7 +233,9 @@ const ClientApp = ({ socket, token }) => {
   
   const callLogic = useVideoCall(socket, activeChatRoom, user);
 
-  // GUARANTEE ROOM JOINING
+  // RESET PAGINATION ON SEARCH OR FILTER
+  useEffect(() => { setProPage(1); }, [searchQuery, selectedCategory, activeTab]);
+
   useEffect(() => {
     if (socket && activeChatRoom) {
         socket.emit('join_room', activeChatRoom._id);
@@ -365,16 +386,28 @@ const ClientApp = ({ socket, token }) => {
   };
 
   const categories = [ { id: 'cleaning', name: 'Cleaning', icon: 'fa-broom', bg: 'bg-blue-50', color: 'text-blue-500' }, { id: 'electric', name: 'Electric', icon: 'fa-bolt', bg: 'bg-orange-50', color: 'text-orange-500' }, { id: 'plumbing', name: 'Plumbing', icon: 'fa-wrench', bg: 'bg-teal-50', color: 'text-teal-600' }, { id: 'tech', name: 'Tech & IT', icon: 'fa-laptop-code', bg: 'bg-purple-50', color: 'text-purple-500' } ];
-  let displayedPros = []; if (activeTab === 'favorites') { displayedPros = professionals.filter(p => favorites.includes(p._id)); } else { displayedPros = selectedCategory ? professionals.filter(p => p.category === selectedCategory) : professionals; }
-  const handleAvatarUpload = async (e) => { const file = e.target.files[0]; if (!file) return; const formData = new FormData(); formData.append('avatar', file); try { const res = await fetch(`${backendUrl}/api/user/avatar`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: formData }); const data = await res.json(); if (res.ok) { login({ ...user, avatar: data.avatar }, token); } } catch (err) {} };
+  
+  // FILTERING LOGIC
+  let displayedPros = []; 
+  if (activeTab === 'favorites') { displayedPros = professionals.filter(p => favorites.includes(p._id)); } 
+  else { displayedPros = selectedCategory ? professionals.filter(p => p.category === selectedCategory) : professionals; }
+  
+  const filteredPros = displayedPros.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  
+  // PAGINATION CALCULATIONS
+  const totalProPages = Math.ceil(filteredPros.length / ITEMS_PER_PAGE);
+  const paginatedPros = filteredPros.slice((proPage - 1) * ITEMS_PER_PAGE, proPage * ITEMS_PER_PAGE);
 
+  const totalBookingPages = Math.ceil(myBookings.length / ITEMS_PER_PAGE);
+  const paginatedBookings = myBookings.slice((bookingPage - 1) * ITEMS_PER_PAGE, bookingPage * ITEMS_PER_PAGE);
+
+  const handleAvatarUpload = async (e) => { const file = e.target.files[0]; if (!file) return; const formData = new FormData(); formData.append('avatar', file); try { const res = await fetch(`${backendUrl}/api/user/avatar`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: formData }); const data = await res.json(); if (res.ok) { login({ ...user, avatar: data.avatar }, token); } } catch (err) {} };
   const mapCenter = partnerLocation ? [partnerLocation.lat, partnerLocation.lng] : myLocation ? [myLocation.lat, myLocation.lng] : [11.9964, 8.5167];
 
   return (
     <div className="bg-bgLight w-full max-w-md mx-auto h-screen md:h-[850px] relative flex flex-col md:rounded-[2.5rem] md:shadow-2xl overflow-hidden text-gray-900">
       <CallUI {...callLogic} />
       
-      {/* HEADER UI */}
       <div className="bg-white px-6 pt-12 pb-4 rounded-b-[2rem] shadow-sm flex justify-between items-center z-10 sticky top-0">
         <div><h1 className="text-2xl font-black text-primary">Servly</h1><p className="text-xs text-gray-500 font-bold flex items-center"><i className="fas fa-map-marker-alt text-teal-500 mr-1"></i> Kano, NG</p></div>
         <div className="flex items-center gap-3">
@@ -408,13 +441,34 @@ const ClientApp = ({ socket, token }) => {
             <div className="relative mb-6 shadow-sm"><i className="fas fa-search absolute left-4 top-3.5 text-gray-400"></i><input type="text" placeholder="Search services..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white py-3.5 pl-12 pr-4 rounded-2xl text-sm outline-none border border-gray-100" /></div>
             <div className="flex justify-between items-end mb-4"><h2 className="text-lg font-bold text-gray-800">Categories</h2></div>
             <div className="grid grid-cols-4 gap-3 mb-8">{categories.map(cat => (<div key={cat.id} onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)} className={`flex flex-col items-center justify-center p-3 rounded-2xl cursor-pointer transition ${selectedCategory === cat.id ? 'bg-primary text-white shadow-md' : `${cat.bg} ${cat.color}`}`}><i className={`fas ${cat.icon} text-xl mb-2`}></i><span className={`text-[10px] font-bold ${selectedCategory === cat.id ? 'text-white' : 'text-gray-600'}`}>{cat.name}</span></div>))}</div>
+            
             <div className="flex justify-between items-end mb-4"><h2 className="text-lg font-bold text-gray-800">Top Professionals</h2></div>
-            <div className="flex flex-col gap-4">{displayedPros.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase())).map(pro => (<div key={pro._id} onClick={() => setViewingProfile(pro)} className="bg-white p-4 rounded-2xl flex items-center shadow-sm border border-gray-50 cursor-pointer"><div className="relative"><img src={pro.avatar || `https://ui-avatars.com/api/?name=${pro.name.replace(/ /g,'+')}&background=0D8ABC&color=fff`} className="w-16 h-16 rounded-2xl object-cover" alt={pro.name} />{pro.verified && <div className="absolute -top-2 -right-2 bg-blue-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] border-2 border-white"><i className="fas fa-check"></i></div>}</div><div className="ml-4 flex-1"><div><h3 className="font-bold text-gray-800 text-base">{pro.name}</h3><p className="text-xs text-teal-600 font-bold">{pro.title}</p></div><div className="flex items-center mt-2 text-xs text-gray-500 font-medium"><span className="flex items-center text-orange-500 mr-3"><i className="fas fa-star mr-1"></i> {pro.rating}</span><span className="flex items-center"><i className="fas fa-map-marker-alt mr-1"></i> {pro.distance}</span></div></div><div className="flex flex-col items-end justify-between h-full"><button onClick={(e) => toggleFavorite(e, pro._id)} className="text-gray-300 hover:text-red-500"><i className={`${favorites.includes(pro._id) ? 'fas text-red-500' : 'far'} fa-heart text-lg`}></i></button><p className="font-black text-gray-800 mt-3">₦{pro.price}<span className="text-[10px] text-gray-400 font-medium">/hr</span></p></div></div>))}</div>
+            <div className="flex flex-col gap-4">
+                {paginatedPros.map(pro => (
+                    <div key={pro._id} onClick={() => setViewingProfile(pro)} className="bg-white p-4 rounded-2xl flex items-center shadow-sm border border-gray-50 cursor-pointer">
+                        <div className="relative"><img src={pro.avatar || `https://ui-avatars.com/api/?name=${pro.name.replace(/ /g,'+')}&background=0D8ABC&color=fff`} className="w-16 h-16 rounded-2xl object-cover" alt={pro.name} />{pro.verified && <div className="absolute -top-2 -right-2 bg-blue-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] border-2 border-white"><i className="fas fa-check"></i></div>}</div>
+                        <div className="ml-4 flex-1"><div><h3 className="font-bold text-gray-800 text-base">{pro.name}</h3><p className="text-xs text-teal-600 font-bold">{pro.title}</p></div><div className="flex items-center mt-2 text-xs text-gray-500 font-medium"><span className="flex items-center text-orange-500 mr-3"><i className="fas fa-star mr-1"></i> {pro.rating}</span><span className="flex items-center"><i className="fas fa-map-marker-alt mr-1"></i> {pro.distance}</span></div></div>
+                        <div className="flex flex-col items-end justify-between h-full"><button onClick={(e) => toggleFavorite(e, pro._id)} className="text-gray-300 hover:text-red-500"><i className={`${favorites.includes(pro._id) ? 'fas text-red-500' : 'far'} fa-heart text-lg`}></i></button><p className="font-black text-gray-800 mt-3">₦{pro.price}<span className="text-[10px] text-gray-400 font-medium">/hr</span></p></div>
+                    </div>
+                ))}
+            </div>
+            {paginatedPros.length === 0 && <p className="text-center text-sm text-gray-400 py-8">No professionals found.</p>}
+            <Pagination currentPage={proPage} totalPages={totalProPages} onPageChange={setProPage} />
           </div>
         )}
 
         {activeTab === 'bookings' && (
-          <div className="px-6 pt-6"><h2 className="text-2xl font-bold mb-6">My Bookings</h2>{myBookings.map(b => (<div key={b._id} className="bg-white p-4 rounded-2xl mb-4 shadow-sm border border-gray-100"><div className="flex justify-between items-start mb-3 border-b border-gray-50 pb-3"><div><h3 className="font-bold text-gray-800">{b.professionalName}</h3><p className="text-xs text-gray-500">{b.date} at {b.time}</p></div><div className={`px-2 py-1 rounded text-[10px] uppercase font-bold ${b.status === 'confirmed' ? 'bg-green-100 text-green-600' : b.status === 'completed' ? 'bg-blue-100 text-blue-600' : b.status === 'cancelled' ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'}`}>{b.status}</div></div><div className="flex gap-2 mt-3"><button onClick={() => openPrivateChat(b)} className="flex-1 py-2 bg-teal-50 text-teal-600 text-xs font-bold rounded-lg"><i className="fas fa-comment-dots mr-1"></i> Chat</button>{b.status === 'pending' && <button onClick={() => handleCancelBooking(b._id)} className="flex-1 py-2 bg-red-50 text-red-600 text-xs font-bold rounded-lg">Cancel</button>}</div></div>))}</div>
+          <div className="px-6 pt-6">
+            <h2 className="text-2xl font-bold mb-6">My Bookings</h2>
+            {paginatedBookings.map(b => (
+                <div key={b._id} className="bg-white p-4 rounded-2xl mb-4 shadow-sm border border-gray-100">
+                    <div className="flex justify-between items-start mb-3 border-b border-gray-50 pb-3"><div><h3 className="font-bold text-gray-800">{b.professionalName}</h3><p className="text-xs text-gray-500">{b.date} at {b.time}</p></div><div className={`px-2 py-1 rounded text-[10px] uppercase font-bold ${b.status === 'confirmed' ? 'bg-green-100 text-green-600' : b.status === 'completed' ? 'bg-blue-100 text-blue-600' : b.status === 'cancelled' ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'}`}>{b.status}</div></div>
+                    <div className="flex gap-2 mt-3"><button onClick={() => openPrivateChat(b)} className="flex-1 py-2 bg-teal-50 text-teal-600 text-xs font-bold rounded-lg"><i className="fas fa-comment-dots mr-1"></i> Chat</button>{b.status === 'pending' && <button onClick={() => handleCancelBooking(b._id)} className="flex-1 py-2 bg-red-50 text-red-600 text-xs font-bold rounded-lg">Cancel</button>}</div>
+                </div>
+            ))}
+            {paginatedBookings.length === 0 && <p className="text-center text-sm text-gray-400 py-8">You have no bookings.</p>}
+            <Pagination currentPage={bookingPage} totalPages={totalBookingPages} onPageChange={setBookingPage} />
+          </div>
         )}
 
         {activeTab === 'chat' && activeChatRoom && (
@@ -474,6 +528,11 @@ const ProfessionalApp = ({ socket, token }) => {
     const { user, logout } = useAuth(); 
     const [activeTab, setActiveTab] = useState('jobs'); 
     const [jobs, setJobs] = useState([]); 
+    
+    // PAGINATION
+    const [jobPage, setJobPage] = useState(1);
+    const ITEMS_PER_PAGE = 4;
+
     const [activeChatRoom, setActiveChatRoom] = useState(null); 
     const [messageList, setMessageList] = useState([]); 
     const [currentMessage, setCurrentMessage] = useState(''); 
@@ -588,11 +647,29 @@ const ProfessionalApp = ({ socket, token }) => {
     const handleSaveProfile = async (e) => { e.preventDefault(); setIsSaving(true); try { const res = await fetch(`${backendUrl}/api/pro/profile`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(editForm) }); const data = await res.json(); if (!res.ok) return alert('Save failed'); setMyProfile(data); setIsEditingProfile(false); } catch(err) {} finally { setIsSaving(false); } };
     
     const proMapCenter = myLocation ? [myLocation.lat, myLocation.lng] : mapPosition;
+    
+    // PAGINATION CALCULATION
+    const totalJobPages = Math.ceil(jobs.length / ITEMS_PER_PAGE);
+    const paginatedJobs = jobs.slice((jobPage - 1) * ITEMS_PER_PAGE, jobPage * ITEMS_PER_PAGE);
 
     return (
         <div className="bg-gray-900 w-full max-w-md mx-auto h-screen md:h-[850px] relative flex flex-col text-white md:rounded-[2.5rem] md:shadow-2xl overflow-hidden">
             <CallUI {...callLogic} />
-            {activeTab === 'jobs' && (<div className="flex-1 overflow-y-auto px-6 pt-10 pb-28"><h2 className="text-2xl font-bold mb-6">My Jobs</h2>{jobs.map(job => (<div key={job._id} className="bg-gray-800 p-5 rounded-2xl mb-4"><div className="flex justify-between mb-3 border-b border-gray-700 pb-3"><h3 className="font-bold">{job.clientName}</h3><div className="px-2 py-1 rounded bg-gray-700 text-[10px] uppercase font-bold">{job.status}</div></div><button onClick={() => handleViewMap(job)} className="bg-gray-700 text-teal-400 px-3 py-1 rounded text-xs mb-4 font-bold shadow-sm flex items-center"><i className="fas fa-map-marker-alt mr-2"></i> View Map</button><div className="flex gap-2"><button onClick={() => openChat(job)} className="flex-1 py-2 bg-gray-700 text-xs font-bold rounded-lg">Chat</button>{job.status === 'pending' && <button onClick={() => updateJobStatus(job._id, 'confirmed')} className="flex-1 py-2 bg-teal-600 text-xs font-bold rounded-lg">Accept</button>}{job.status === 'confirmed' && <button onClick={() => updateJobStatus(job._id, 'completed')} className="flex-1 py-2 bg-blue-600 text-xs font-bold rounded-lg">Complete</button>}</div></div>))}</div>)}
+            
+            {activeTab === 'jobs' && (
+                <div className="flex-1 overflow-y-auto px-6 pt-10 pb-28">
+                    <h2 className="text-2xl font-bold mb-6">My Jobs</h2>
+                    {paginatedJobs.map(job => (
+                        <div key={job._id} className="bg-gray-800 p-5 rounded-2xl mb-4">
+                            <div className="flex justify-between mb-3 border-b border-gray-700 pb-3"><h3 className="font-bold">{job.clientName}</h3><div className="px-2 py-1 rounded bg-gray-700 text-[10px] uppercase font-bold">{job.status}</div></div>
+                            <button onClick={() => handleViewMap(job)} className="bg-gray-700 text-teal-400 px-3 py-1 rounded text-xs mb-4 font-bold shadow-sm flex items-center"><i className="fas fa-map-marker-alt mr-2"></i> View Map</button>
+                            <div className="flex gap-2"><button onClick={() => openChat(job)} className="flex-1 py-2 bg-gray-700 text-xs font-bold rounded-lg">Chat</button>{job.status === 'pending' && <button onClick={() => updateJobStatus(job._id, 'confirmed')} className="flex-1 py-2 bg-teal-600 text-xs font-bold rounded-lg">Accept</button>}{job.status === 'confirmed' && <button onClick={() => updateJobStatus(job._id, 'completed')} className="flex-1 py-2 bg-blue-600 text-xs font-bold rounded-lg">Complete</button>}</div>
+                        </div>
+                    ))}
+                    {paginatedJobs.length === 0 && <p className="text-center text-sm text-gray-500 py-8">No jobs found.</p>}
+                    <Pagination currentPage={jobPage} totalPages={totalJobPages} onPageChange={setJobPage} />
+                </div>
+            )}
             
             {activeTab === 'chat' && activeChatRoom && (<div className="flex-1 flex flex-col bg-gray-900 z-20"><div className="bg-gray-800 px-6 py-4 flex items-center justify-between shadow-sm sticky top-0 z-20"><div className="flex items-center"><button onClick={() => setActiveTab('jobs')} className="mr-4 text-gray-400"><i className="fas fa-arrow-left"></i></button><div><h3 className="font-bold text-white text-sm">{activeChatRoom.clientName}</h3><p className="text-[10px] text-teal-400 font-bold">Job Chat</p></div></div><div className="flex gap-3"><button onClick={callLogic.startCall} className="w-8 h-8 bg-gray-700 text-teal-400 rounded-full flex items-center justify-center text-xs"><i className="fas fa-video"></i></button></div></div><div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4 pb-20">{messageList.map((msg, i) => { const isMe = msg.senderId === user.id; return (<div key={i} className={`max-w-[75%] p-3 rounded-2xl text-sm shadow-sm ${isMe ? 'bg-teal-600 text-white self-end rounded-br-sm' : 'bg-gray-800 text-gray-200 self-start rounded-bl-sm'}`}><p>{msg.message}</p><div className="flex items-center justify-end mt-1 gap-1"><span className={`text-[9px] ${isMe ? 'text-teal-100' : 'text-gray-400'}`}>{msg.time}</span>{isMe && <span className={`text-[10px] ${msg.isRead ? 'text-blue-300' : 'text-teal-200'}`}>{msg.isRead ? '✓✓' : '✓'}</span>}</div></div>); })}<div ref={chatEndRef} /></div><div className="absolute bottom-0 w-full bg-gray-800 p-4 border-t border-gray-700 flex items-center gap-2"><div className="relative"><button onClick={toggleLocationSharing} className={`w-10 h-10 rounded-full flex items-center justify-center transition ${isSharingLocation ? 'bg-red-500/20 text-red-500' : 'bg-gray-700 text-gray-400'}`}><i className="fas fa-map-marker-alt"></i></button>{isSharingLocation && <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full animate-ping"></div>}</div><input type="text" placeholder="Type message..." value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} onKeyPress={e => e.key === 'Enter' && sendMessage()} className="flex-1 bg-gray-700 text-white py-3 px-4 rounded-full text-sm outline-none placeholder-gray-400" /><button onClick={sendMessage} className="w-10 h-10 bg-teal-600 text-white rounded-full flex items-center justify-center shadow-md"><i className="fas fa-paper-plane"></i></button></div></div>)}
             
