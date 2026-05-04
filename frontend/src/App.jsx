@@ -227,7 +227,7 @@ const ClientApp = ({ socket, token }) => {
   
   const [proPage, setProPage] = useState(1);
   const [bookingPage, setBookingPage] = useState(1);
-  const ITEMS_PER_PAGE = 4; // <--- Restored back to 4 so pagination shows up!
+  const ITEMS_PER_PAGE = 4; 
   
   const [viewingProfile, setViewingProfile] = useState(null);
   const [bookingPro, setBookingPro] = useState(null);
@@ -344,7 +344,23 @@ const ClientApp = ({ socket, token }) => {
     try { const res = await fetch(`${backendUrl}/api/user/favorites/${proId}`, { method, headers: { 'Authorization': `Bearer ${token}` }}); const data = await res.json(); if (!res.ok) return alert(`Could not save pro`); setFavorites(Array.isArray(data) ? data : []); } catch(err) { console.error(err); } 
   };
   
-  const markNotificationsRead = () => { setShowNotifications(!showNotifications); if (!showNotifications && unreadCount > 0) { fetch(`${backendUrl}/api/notifications/read`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${token}` } }); setNotifications(Array.isArray(notifications) ? notifications.map(n => ({...n, isRead: true})) : []); } };
+  const markNotificationsRead = () => { 
+    setShowNotifications(!showNotifications); 
+    if (!showNotifications && unreadCount > 0) { 
+        fetch(`${backendUrl}/api/notifications/read`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${token}` } }); 
+        setNotifications(Array.isArray(notifications) ? notifications.map(n => ({...n, isRead: true})) : []); 
+    } 
+  };
+
+  const handleNotificationClick = (n) => {
+      setShowNotifications(false);
+      // Route based on notification content
+      if (n.title && n.title.toLowerCase().includes('message')) {
+          setActiveTab('chat');
+      } else {
+          setActiveTab('bookings');
+      }
+  };
   
   const formatTimeAMPM = (time24) => {
       if (!time24) return '';
@@ -441,7 +457,11 @@ const ClientApp = ({ socket, token }) => {
                                 <p className="px-6 py-4 text-center text-sm text-gray-500">No notifications yet</p>
                             ) : (
                                 notifications.map(n => (
-                                    <div key={n._id} className={`px-6 py-3 border-b border-gray-50 ${!n.isRead ? 'bg-teal-50/30' : ''}`}>
+                                    <div 
+                                        key={n._id} 
+                                        onClick={() => handleNotificationClick(n)}
+                                        className={`px-6 py-3 border-b border-gray-50 cursor-pointer hover:bg-gray-100 transition ${!n.isRead ? 'bg-teal-50/30' : ''}`}
+                                    >
                                         <h4 className="text-xs font-bold text-gray-800">{n.title}</h4>
                                         <p className="text-xs text-gray-500 mt-1">{n.message}</p>
                                     </div>
@@ -632,7 +652,7 @@ const ProfessionalApp = ({ socket, token }) => {
     const [jobs, setJobs] = useState([]); 
     
     const [jobPage, setJobPage] = useState(1);
-    const ITEMS_PER_PAGE = 4; // <--- Restored back to 4 so pagination shows up!
+    const ITEMS_PER_PAGE = 4; 
 
     const [activeChatRoom, setActiveChatRoom] = useState(null); 
     const [messageList, setMessageList] = useState([]); 
