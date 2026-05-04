@@ -136,11 +136,12 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('call_user', (data) => {
+    socket.on('call_user', (data) => {
     socket.to(data.room).emit('incoming_call', {
       offer: data.offer,
       callerName: data.callerName,
-      room: data.room
+      room: data.room,
+      callType: data.callType // <--- ADD THIS ONE LINE
     });
   });
 
