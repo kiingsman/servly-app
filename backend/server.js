@@ -148,6 +148,13 @@ const createNotification = async (userId, title, message) => {
   }
 };
 
+// Helper function to extract user ID bulletproofly 
+// (handles differences between raw JWTs and Mongoose documents)
+const getUserId = (req) => {
+  if (!req.user) return null;
+  return req.user._id || req.user.id || req.user.userId || req.userId;
+};
+
 // ==========================================
 // 4. AUTH ROUTES
 // ==========================================
@@ -221,9 +228,9 @@ app.post('/api/user/avatar', auth, upload.single('avatar'), async (req, res) => 
     if (!req.file) return res.status(400).json({ message: 'No image provided' });
     const avatarUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
     
-    const user = await User.findByIdAndUpdate(req.user.id, { avatar: avatarUrl }, { new: true });
+    const user = await User.findByIdAndUpdate(getUserId(req), { avatar: avatarUrl }, { new: true });
     
-    if (user.role === 'professional') {
+    if (user && user.role === 'professional') {
       await Professional.findOneAndUpdate({ userId: user._id }, { avatar: avatarUrl });
     }
     
@@ -235,7 +242,9 @@ app.post('/api/user/avatar', auth, upload.single('avatar'), async (req, res) => 
 
 app.post('/api/user/favorites/:proId', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(getUserId(req));
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
     if (!user.favorites.includes(req.params.proId)) {
       user.favorites.push(req.params.proId);
       await user.save();
@@ -248,7 +257,9 @@ app.post('/api/user/favorites/:proId', auth, async (req, res) => {
 
 app.delete('/api/user/favorites/:proId', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(getUserId(req));
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
     user.favorites = user.favorites.filter(id => id.toString() !== req.params.proId);
     await user.save();
     res.json(user.favorites);
@@ -272,7 +283,7 @@ app.get('/api/professionals', async (req, res) => {
 app.put('/api/pro/profile', auth, checkRole('professional'), async (req, res) => {
   try {
     const updatedPro = await Professional.findOneAndUpdate(
-      { userId: req.user.id },
+      { userId: getUserId(req) },
       { $set: req.body },
       { new: true, runValidators: true }
     );
@@ -289,13 +300,17 @@ app.post('/api/bookings', auth, checkRole('client'), async (req, res) => {
   try {
     const { professionalId, professionalName, clientName, date, time, address, totalPrice } = req.body;
     
-    // Check if the professional ID is valid before proceeding
     if (!professionalId) {
        return res.status(400).json({ message: 'Professional ID is missing from request.' });
     }
 
+    const actualUserId = getUserId(req);
+    if (!actualUserId) {
+        return res.status(400).json({ message: 'User ID is missing. Please log out and log back in.' });
+    }
+
     const booking = new Booking({
-      userId: req.user.id,
+      userId: actualUserId,
       clientName,
       professionalId,
       professionalName,
@@ -324,14 +339,13 @@ app.post('/api/bookings', auth, checkRole('client'), async (req, res) => {
     res.status(201).json(booking);
   } catch (err) {
     console.error('Booking creation error:', err.message);
-    // This will now send the EXACT mongoose error back to the frontend (e.g., "address is required")
     res.status(500).json({ message: err.message || 'Booking failed' });
   }
 });
 
 app.get('/api/bookings', auth, checkRole('client'), async (req, res) => {
   try {
-    const bookings = await Booking.find({ userId: req.user.id }).sort({ createdAt: -1 });
+    const bookings = await Booking.find({ userId: getUserId(req) }).sort({ createdAt: -1 });
     res.json(bookings);
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to fetch bookings' });
@@ -340,7 +354,7 @@ app.get('/api/bookings', auth, checkRole('client'), async (req, res) => {
 
 app.get('/api/pro/bookings', auth, checkRole('professional'), async (req, res) => {
   try {
-    const pro = await Professional.findOne({ userId: req.user.id });
+    const pro = await Professional.findOne({ userId: getUserId(req) });
     if (!pro) return res.status(404).json({ message: 'Professional profile not found' });
 
     const bookings = await Booking.find({ professionalId: pro._id }).sort({ createdAt: -1 });
@@ -353,7 +367,7 @@ app.get('/api/pro/bookings', auth, checkRole('professional'), async (req, res) =
 app.patch('/api/bookings/:id/cancel', auth, checkRole('client'), async (req, res) => {
   try {
     const booking = await Booking.findOneAndUpdate(
-      { _id: req.params.id, userId: req.user.id },
+      { _id: req.params.id, userId: getUserId(req) },
       { status: 'cancelled' },
       { new: true }
     );
@@ -391,7 +405,7 @@ app.patch('/api/admin/bookings/:id/status', auth, checkRole('admin', 'profession
 // ==========================================
 app.get('/api/notifications', auth, async (req, res) => {
   try {
-    const notifications = await Notification.find({ userId: req.user.id }).sort({ createdAt: -1 });
+    const notifications = await Notification.find({ userId: getUserId(req) }).sort({ createdAt: -1 });
     res.json(notifications);
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to fetch notifications' });
@@ -400,7 +414,7 @@ app.get('/api/notifications', auth, async (req, res) => {
 
 app.patch('/api/notifications/read', auth, async (req, res) => {
   try {
-    await Notification.updateMany({ userId: req.user.id, isRead: false }, { isRead: true });
+    await Notification.updateMany({ userId: getUserId(req), isRead: false }, { isRead: true });
     res.json({ message: 'Marked as read' });
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to update notifications' });
