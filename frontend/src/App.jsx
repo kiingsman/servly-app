@@ -179,7 +179,8 @@ const AuthScreen = () => {
 // ==========================================
 // CLIENT DASHBOARD
 // ==========================================
-const ClientApp = ({ socket }) => {
+// PROPS NOW INCLUDE TOKEN
+const ClientApp = ({ socket, token }) => {
   const { user, login, logout } = useAuth();
   
   const [activeTab, setActiveTab] = useState('home');
@@ -190,6 +191,7 @@ const ClientApp = ({ socket }) => {
   
   const [viewingProfile, setViewingProfile] = useState(null);
   const [bookingPro, setBookingPro] = useState(null);
+  
   const [bookingData, setBookingData] = useState({ date: '', time: '10:00', address: '' });
   const [isBookingSuccess, setIsBookingSuccess] = useState(false);
   
@@ -214,9 +216,13 @@ const ClientApp = ({ socket }) => {
   const callLogic = useVideoCall(socket, activeChatRoom, user);
 
   useEffect(() => {
+      // FIX: Use the guaranteed state token instead of localStorage directly to prevent 401 null header errors
       fetch(`${backendUrl}/api/professionals`).then(res => res.json()).then(data => setProfessionals(Array.isArray(data) ? data : []));
-      fetch(`${backendUrl}/api/bookings`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }).then(res => res.json()).then(data => setMyBookings(Array.isArray(data) ? data : []));
-      fetch(`${backendUrl}/api/notifications`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }).then(res => res.json()).then(data => setNotifications(Array.isArray(data) ? data : []));
+      
+      if (token) {
+        fetch(`${backendUrl}/api/bookings`, { headers: { 'Authorization': `Bearer ${token}` } }).then(res => res.json()).then(data => setMyBookings(Array.isArray(data) ? data : []));
+        fetch(`${backendUrl}/api/notifications`, { headers: { 'Authorization': `Bearer ${token}` } }).then(res => res.json()).then(data => setNotifications(Array.isArray(data) ? data : []));
+      }
 
       if (!socket) return;
       
@@ -246,7 +252,7 @@ const ClientApp = ({ socket }) => {
           socket.off('new_notification', onNewNotification);
           if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current);
       };
-  }, [socket, activeChatRoom, user.id]);
+  }, [socket, activeChatRoom, user.id, token]);
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messageList]);
   
@@ -278,8 +284,12 @@ const ClientApp = ({ socket }) => {
       } 
   };
 
-  const toggleFavorite = async (e, proId) => { e.stopPropagation(); const isFav = favorites.includes(proId); const method = isFav ? 'DELETE' : 'POST'; try { const res = await fetch(`${backendUrl}/api/user/favorites/${proId}`, { method, headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }}); const data = await res.json(); if (!res.ok) return alert(`Could not save pro`); setFavorites(Array.isArray(data) ? data : []); } catch(err) { console.error(err); } };
-  const markNotificationsRead = () => { setShowNotifications(!showNotifications); if (!showNotifications && unreadCount > 0) { fetch(`${backendUrl}/api/notifications/read`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }); setNotifications(Array.isArray(notifications) ? notifications.map(n => ({...n, isRead: true})) : []); } };
+  const toggleFavorite = async (e, proId) => { 
+    e.stopPropagation(); const isFav = favorites.includes(proId); const method = isFav ? 'DELETE' : 'POST'; 
+    try { const res = await fetch(`${backendUrl}/api/user/favorites/${proId}`, { method, headers: { 'Authorization': `Bearer ${token}` }}); const data = await res.json(); if (!res.ok) return alert(`Could not save pro`); setFavorites(Array.isArray(data) ? data : []); } catch(err) { console.error(err); } 
+  };
+  
+  const markNotificationsRead = () => { setShowNotifications(!showNotifications); if (!showNotifications && unreadCount > 0) { fetch(`${backendUrl}/api/notifications/read`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${token}` } }); setNotifications(Array.isArray(notifications) ? notifications.map(n => ({...n, isRead: true})) : []); } };
   
   const formatTimeAMPM = (time24) => {
       if (!time24) return '';
@@ -293,7 +303,7 @@ const ClientApp = ({ socket }) => {
       try { 
           const res = await fetch(`${backendUrl}/api/bookings`, { 
               method: 'POST', 
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, 
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, 
               body: JSON.stringify({ 
                   professionalId: bookingPro._id || bookingPro.id, 
                   professionalName: bookingPro.name, 
@@ -308,6 +318,7 @@ const ClientApp = ({ socket }) => {
           if (!res.ok) {
               const data = await res.json();
               if (res.status === 401) {
+                  logout();
                   alert('Session expired. Please log out and log back in.');
               } else {
                   alert(data.message || 'Booking failed');
@@ -320,12 +331,12 @@ const ClientApp = ({ socket }) => {
       } 
   };
   
-  const handleCancelBooking = async (id) => { if (!window.confirm("Cancel booking?")) return; const res = await fetch(`${backendUrl}/api/bookings/${id}/cancel`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }); if (res.ok) setMyBookings(prev => prev.map(b => b._id === id ? { ...b, status: 'cancelled' } : b)); };
-  const openPrivateChat = async (booking) => { setActiveChatRoom(booking); setMessageList([]); setActiveTab('chat'); if (socket) { socket.emit('join_room', booking._id); socket.emit('mark_messages_read', { bookingId: booking._id, userId: user.id }); } fetch(`${backendUrl}/api/chat/${booking._id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }).then(res => res.json()).then(data => setMessageList(Array.isArray(data) ? data : [])); };
+  const handleCancelBooking = async (id) => { if (!window.confirm("Cancel booking?")) return; const res = await fetch(`${backendUrl}/api/bookings/${id}/cancel`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${token}` } }); if (res.ok) setMyBookings(prev => prev.map(b => b._id === id ? { ...b, status: 'cancelled' } : b)); };
+  const openPrivateChat = async (booking) => { setActiveChatRoom(booking); setMessageList([]); setActiveTab('chat'); if (socket) { socket.emit('join_room', booking._id); socket.emit('mark_messages_read', { bookingId: booking._id, userId: user.id }); } fetch(`${backendUrl}/api/chat/${booking._id}`, { headers: { 'Authorization': `Bearer ${token}` } }).then(res => res.json()).then(data => setMessageList(Array.isArray(data) ? data : [])); };
   const sendMessage = async () => { if (currentMessage && activeChatRoom && socket) { const msg = { room: activeChatRoom._id, senderId: user.id, author: user.name, message: currentMessage, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}), isRead: false }; await socket.emit('send_message', msg); setMessageList(list => [...list, msg]); setCurrentMessage(""); } };
   const categories = [ { id: 'cleaning', name: 'Cleaning', icon: 'fa-broom', bg: 'bg-blue-50', color: 'text-blue-500' }, { id: 'electric', name: 'Electric', icon: 'fa-bolt', bg: 'bg-orange-50', color: 'text-orange-500' }, { id: 'plumbing', name: 'Plumbing', icon: 'fa-wrench', bg: 'bg-teal-50', color: 'text-teal-600' }, { id: 'tech', name: 'Tech & IT', icon: 'fa-laptop-code', bg: 'bg-purple-50', color: 'text-purple-500' } ];
   let displayedPros = []; if (activeTab === 'favorites') { displayedPros = professionals.filter(p => favorites.includes(p._id)); } else { displayedPros = selectedCategory ? professionals.filter(p => p.category === selectedCategory) : professionals; }
-  const handleAvatarUpload = async (e) => { const file = e.target.files[0]; if (!file) return; const formData = new FormData(); formData.append('avatar', file); try { const res = await fetch(`${backendUrl}/api/user/avatar`, { method: 'POST', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, body: formData }); const data = await res.json(); if (res.ok) { login({ ...user, avatar: data.avatar }, localStorage.getItem('servly_token')); } } catch (err) {} };
+  const handleAvatarUpload = async (e) => { const file = e.target.files[0]; if (!file) return; const formData = new FormData(); formData.append('avatar', file); try { const res = await fetch(`${backendUrl}/api/user/avatar`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: formData }); const data = await res.json(); if (res.ok) { login({ ...user, avatar: data.avatar }, token); } } catch (err) {} };
 
   const mapCenter = partnerLocation ? [partnerLocation.lat, partnerLocation.lng] : myLocation ? [myLocation.lat, myLocation.lng] : [11.9964, 8.5167];
 
@@ -429,7 +440,8 @@ const ClientApp = ({ socket }) => {
 // ==========================================
 // PROFESSIONAL DASHBOARD
 // ==========================================
-const ProfessionalApp = ({ socket }) => {
+// PROPS NOW INCLUDE TOKEN
+const ProfessionalApp = ({ socket, token }) => {
     const { user, logout } = useAuth(); 
     const [activeTab, setActiveTab] = useState('jobs'); 
     const [jobs, setJobs] = useState([]); 
@@ -453,8 +465,11 @@ const ProfessionalApp = ({ socket }) => {
     const [isSaving, setIsSaving] = useState(false);
     
     useEffect(() => { 
-        fetch(`${backendUrl}/api/pro/bookings`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }).then(res => res.json()).then(data => setJobs(Array.isArray(data) ? data : [])); 
         fetch(`${backendUrl}/api/professionals`).then(res => res.json()).then(data => { if(Array.isArray(data)) { const me = data.find(p => p.userId === user.id); if(me) { setMyProfile(me); setEditForm(me); } } }); 
+        
+        if (token) {
+            fetch(`${backendUrl}/api/pro/bookings`, { headers: { 'Authorization': `Bearer ${token}` } }).then(res => res.json()).then(data => setJobs(Array.isArray(data) ? data : [])); 
+        }
         
         if (!socket) return;
         
@@ -472,7 +487,7 @@ const ProfessionalApp = ({ socket }) => {
             socket.off('receive_live_location', onReceiveLocation); 
             if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current); 
         }; 
-    }, [socket, activeChatRoom, user.id]);
+    }, [socket, activeChatRoom, user.id, token]);
     
     useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messageList]); 
     
@@ -485,9 +500,9 @@ const ProfessionalApp = ({ socket }) => {
         } 
     }, [activeTab, activeChatRoom, viewingMapForJob, isSharingLocation, socket, user.name]);
     
-    const openChat = async (job) => { setActiveChatRoom(job); setMessageList([]); setActiveTab('chat'); if (socket) { socket.emit('join_room', job._id); socket.emit('mark_messages_read', { bookingId: job._id, userId: user.id }); } fetch(`${backendUrl}/api/chat/${job._id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }).then(res => res.json()).then(data => setMessageList(Array.isArray(data) ? data : [])); };
+    const openChat = async (job) => { setActiveChatRoom(job); setMessageList([]); setActiveTab('chat'); if (socket) { socket.emit('join_room', job._id); socket.emit('mark_messages_read', { bookingId: job._id, userId: user.id }); } fetch(`${backendUrl}/api/chat/${job._id}`, { headers: { 'Authorization': `Bearer ${token}` } }).then(res => res.json()).then(data => setMessageList(Array.isArray(data) ? data : [])); };
     const sendMessage = async () => { if (currentMessage && activeChatRoom && socket) { const msgData = { room: activeChatRoom._id, senderId: user.id, author: user.name, message: currentMessage, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}), isRead: false }; await socket.emit('send_message', msgData); setMessageList(list => [...list, msgData]); setCurrentMessage(""); } };
-    const updateJobStatus = async (id, status) => { const res = await fetch(`${backendUrl}/api/admin/bookings/${id}/status`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, body: JSON.stringify({ status }) }); if (res.ok) setJobs(prev => prev.map(j => j._id === id ? { ...j, status } : j)); };
+    const updateJobStatus = async (id, status) => { const res = await fetch(`${backendUrl}/api/admin/bookings/${id}/status`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ status }) }); if (res.ok) setJobs(prev => prev.map(j => j._id === id ? { ...j, status } : j)); };
     const handleViewMap = async (job) => { setActiveChatRoom(job); setViewingMapForJob(job); try { const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(job.address)}`); const data = await res.json(); if (data.length > 0) setMapPosition([parseFloat(data[0].lat), parseFloat(data[0].lon)]); } catch (err) {} };
     
     const toggleLocationSharing = () => { 
@@ -510,7 +525,7 @@ const ProfessionalApp = ({ socket }) => {
         } 
     };
     
-    const handleSaveProfile = async (e) => { e.preventDefault(); setIsSaving(true); try { const res = await fetch(`${backendUrl}/api/pro/profile`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }, body: JSON.stringify(editForm) }); const data = await res.json(); if (!res.ok) return alert('Save failed'); setMyProfile(data); setIsEditingProfile(false); } catch(err) {} finally { setIsSaving(false); } };
+    const handleSaveProfile = async (e) => { e.preventDefault(); setIsSaving(true); try { const res = await fetch(`${backendUrl}/api/pro/profile`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(editForm) }); const data = await res.json(); if (!res.ok) return alert('Save failed'); setMyProfile(data); setIsEditingProfile(false); } catch(err) {} finally { setIsSaving(false); } };
     
     const proMapCenter = myLocation ? [myLocation.lat, myLocation.lng] : mapPosition;
 
@@ -564,7 +579,8 @@ const AppContent = () => {
         } 
     }, [user, token, socket]);
     if (!user) return <AuthScreen />;
-    return user.role === 'professional' ? <ProfessionalApp socket={socket} /> : <ClientApp socket={socket} />;
+    // PASSED TOKEN INTO APPS HERE
+    return user.role === 'professional' ? <ProfessionalApp socket={socket} token={token} /> : <ClientApp socket={socket} token={token} />;
 };
 
 const App = () => { return (<AuthProvider><AppContent /></AuthProvider>); };
