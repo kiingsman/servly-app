@@ -93,7 +93,7 @@ io.on('connection', (socket) => {
         isRead: false 
       });
 
-      // ---> NEW: Create a notification for the message recipient
+      // Create a notification for the message recipient
       const booking = await Booking.findById(data.room);
       if (booking) {
         let recipientId;
@@ -136,12 +136,13 @@ io.on('connection', (socket) => {
     }
   });
 
-    socket.on('call_user', (data) => {
+  // ---> NEW: Pass callType (voice or video) to the receiver
+  socket.on('call_user', (data) => {
     socket.to(data.room).emit('incoming_call', {
       offer: data.offer,
       callerName: data.callerName,
       room: data.room,
-      callType: data.callType // <--- ADD THIS ONE LINE
+      callType: data.callType // This ensures the receiver knows it's a voice call
     });
   });
 
@@ -162,7 +163,6 @@ io.on('connection', (socket) => {
   });
 });
 
-// ---> NEW: Added bookingId and type parameters
 const createNotification = async (userId, title, message, bookingId = null, type = 'status') => {
   try {
     const notif = new Notification({ userId, title, message, bookingId, type });
@@ -323,14 +323,10 @@ app.post('/api/bookings', auth, checkRole('client'), async (req, res) => {
   try {
     const { professionalId, professionalName, clientName, date, time, address, totalPrice } = req.body;
     
-    if (!professionalId) {
-       return res.status(400).json({ message: 'Professional ID is missing from request.' });
-    }
+    if (!professionalId) return res.status(400).json({ message: 'Professional ID is missing from request.' });
 
     const actualUserId = getUserId(req);
-    if (!actualUserId) {
-        return res.status(400).json({ message: 'User ID is missing. Please log out and log back in.' });
-    }
+    if (!actualUserId) return res.status(400).json({ message: 'User ID is missing. Please log out and log back in.' });
 
     const booking = new Booking({
       userId: actualUserId,
@@ -345,7 +341,6 @@ app.post('/api/bookings', auth, checkRole('client'), async (req, res) => {
     
     await booking.save();
 
-    // Safely Create Notification for the Professional
     try {
       const pro = await Professional.findById(professionalId);
       if (pro && pro.userId) {
@@ -353,8 +348,8 @@ app.post('/api/bookings', auth, checkRole('client'), async (req, res) => {
           pro.userId, 
           'New Job Request!', 
           `${clientName} booked you for ${date} at ${time}.`,
-          booking._id, // ---> NEW: Passing booking ID
-          'status'     // ---> NEW: Passing type
+          booking._id, 
+          'status'
         );
         io.emit('new_notification', notif);
       }
@@ -418,8 +413,8 @@ app.patch('/api/admin/bookings/:id/status', auth, checkRole('admin', 'profession
       booking.userId,
       'Booking Update',
       `Your booking with ${booking.professionalName} is now ${req.body.status}.`,
-      booking._id, // ---> NEW: Passing booking ID
-      'status'     // ---> NEW: Passing type
+      booking._id,
+      'status'
     );
     io.emit('new_notification', notif);
 
