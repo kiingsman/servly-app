@@ -214,7 +214,16 @@ const ClientApp = ({ socket, token }) => {
   
   const callLogic = useVideoCall(socket, activeChatRoom, user);
 
-  // FIX 1: Passed token directly from props into fetch calls
+  // GUARANTEE ROOM JOINING
+  useEffect(() => {
+    if (socket && activeChatRoom) {
+        socket.emit('join_room', activeChatRoom._id);
+        const handleReconnect = () => socket.emit('join_room', activeChatRoom._id);
+        socket.on('connect', handleReconnect);
+        return () => socket.off('connect', handleReconnect);
+    }
+  }, [socket, activeChatRoom]);
+
   useEffect(() => {
       fetch(`${backendUrl}/api/professionals`).then(res => res.json()).then(data => setProfessionals(Array.isArray(data) ? data : []));
       
@@ -236,7 +245,11 @@ const ClientApp = ({ socket, token }) => {
           setMessageList(prev => prev.map(msg => ({ ...msg, isRead: true })));
       };
       
-      const onReceiveLocation = (data) => { if (data.lat === null) setPartnerLocation(null); else setPartnerLocation({ lat: data.lat, lng: data.lng, author: data.author }); };
+      const onReceiveLocation = (data) => { 
+          if (data.lat === null) setPartnerLocation(null); 
+          else setPartnerLocation({ lat: data.lat, lng: data.lng, author: data.author }); 
+      };
+      
       const onNewNotification = (notif) => { setNotifications(prev => [notif, ...prev]); };
 
       socket.on('receive_message', onReceiveMessage);
@@ -260,11 +273,12 @@ const ClientApp = ({ socket, token }) => {
           if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current); 
           setIsSharingLocation(false); 
           setMyLocation(null);
-          if(socket) socket.emit('live_location_update', { room: activeChatRoom._id, lat: null, lng: null, author: user.name }); 
+          if(socket && activeChatRoom) socket.emit('live_location_update', { room: activeChatRoom._id, lat: null, lng: null, author: user.name }); 
       } 
   }, [activeTab, activeChatRoom, viewingLiveMap, isSharingLocation, socket, user.name]);
 
   const toggleLocationSharing = () => { 
+      if (!activeChatRoom) return;
       if (isSharingLocation) { 
           if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current); 
           setIsSharingLocation(false); 
@@ -331,8 +345,25 @@ const ClientApp = ({ socket, token }) => {
   };
   
   const handleCancelBooking = async (id) => { if (!window.confirm("Cancel booking?")) return; const res = await fetch(`${backendUrl}/api/bookings/${id}/cancel`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${token}` } }); if (res.ok) setMyBookings(prev => prev.map(b => b._id === id ? { ...b, status: 'cancelled' } : b)); };
-  const openPrivateChat = async (booking) => { setActiveChatRoom(booking); setMessageList([]); setActiveTab('chat'); if (socket) { socket.emit('join_room', booking._id); socket.emit('mark_messages_read', { bookingId: booking._id, userId: user.id }); } fetch(`${backendUrl}/api/chat/${booking._id}`, { headers: { 'Authorization': `Bearer ${token}` } }).then(res => res.json()).then(data => setMessageList(Array.isArray(data) ? data : [])); };
-  const sendMessage = async () => { if (currentMessage && activeChatRoom && socket) { const msg = { room: activeChatRoom._id, senderId: user.id, author: user.name, message: currentMessage, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}), isRead: false }; await socket.emit('send_message', msg); setMessageList(list => [...list, msg]); setCurrentMessage(""); } };
+  
+  const openPrivateChat = async (booking) => { 
+      setActiveChatRoom(booking); 
+      setMessageList([]); 
+      setActiveTab('chat'); 
+      fetch(`${backendUrl}/api/chat/${booking._id}`, { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(res => res.json())
+        .then(data => setMessageList(Array.isArray(data) ? data : [])); 
+  };
+
+  const sendMessage = async () => { 
+      if (currentMessage && activeChatRoom && socket) { 
+          const msg = { room: activeChatRoom._id, senderId: user.id, author: user.name, message: currentMessage, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}), isRead: false }; 
+          await socket.emit('send_message', msg); 
+          setMessageList(list => [...list, msg]); 
+          setCurrentMessage(""); 
+      } 
+  };
+
   const categories = [ { id: 'cleaning', name: 'Cleaning', icon: 'fa-broom', bg: 'bg-blue-50', color: 'text-blue-500' }, { id: 'electric', name: 'Electric', icon: 'fa-bolt', bg: 'bg-orange-50', color: 'text-orange-500' }, { id: 'plumbing', name: 'Plumbing', icon: 'fa-wrench', bg: 'bg-teal-50', color: 'text-teal-600' }, { id: 'tech', name: 'Tech & IT', icon: 'fa-laptop-code', bg: 'bg-purple-50', color: 'text-purple-500' } ];
   let displayedPros = []; if (activeTab === 'favorites') { displayedPros = professionals.filter(p => favorites.includes(p._id)); } else { displayedPros = selectedCategory ? professionals.filter(p => p.category === selectedCategory) : professionals; }
   const handleAvatarUpload = async (e) => { const file = e.target.files[0]; if (!file) return; const formData = new FormData(); formData.append('avatar', file); try { const res = await fetch(`${backendUrl}/api/user/avatar`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: formData }); const data = await res.json(); if (res.ok) { login({ ...user, avatar: data.avatar }, token); } } catch (err) {} };
@@ -461,8 +492,17 @@ const ProfessionalApp = ({ socket, token }) => {
     const [isEditingProfile, setIsEditingProfile] = useState(false); 
     const [editForm, setEditForm] = useState({}); 
     const [isSaving, setIsSaving] = useState(false);
+
+    // GUARANTEE ROOM JOINING
+    useEffect(() => {
+        if (socket && activeChatRoom) {
+            socket.emit('join_room', activeChatRoom._id);
+            const handleReconnect = () => socket.emit('join_room', activeChatRoom._id);
+            socket.on('connect', handleReconnect);
+            return () => socket.off('connect', handleReconnect);
+        }
+    }, [socket, activeChatRoom]);
     
-    // FIX 2: Passed token directly from props into Pro fetch calls
     useEffect(() => { 
         fetch(`${backendUrl}/api/professionals`).then(res => res.json()).then(data => { if(Array.isArray(data)) { const me = data.find(p => p.userId === user.id); if(me) { setMyProfile(me); setEditForm(me); } } }); 
         
@@ -472,7 +512,12 @@ const ProfessionalApp = ({ socket, token }) => {
         
         if (!socket) return;
         
-        const onReceiveMessage = (data) => { setMessageList((list) => [...list, data]); if (activeChatRoom && data.room === activeChatRoom._id) { socket.emit('mark_messages_read', { bookingId: activeChatRoom._id, userId: user.id }); } };
+        const onReceiveMessage = (data) => { 
+            setMessageList((list) => [...list, data]); 
+            if (activeChatRoom && data.room === activeChatRoom._id) { 
+                socket.emit('mark_messages_read', { bookingId: activeChatRoom._id, userId: user.id }); 
+            } 
+        };
         const onMessagesReadUpdate = () => { setMessageList(prev => prev.map(msg => ({ ...msg, isRead: true }))); };
         const onReceiveLocation = (data) => { if (data.lat === null) setPartnerLocation(null); else setPartnerLocation({ lat: data.lat, lng: data.lng, author: data.author }); };
         
@@ -499,8 +544,24 @@ const ProfessionalApp = ({ socket, token }) => {
         } 
     }, [activeTab, activeChatRoom, viewingMapForJob, isSharingLocation, socket, user.name]);
     
-    const openChat = async (job) => { setActiveChatRoom(job); setMessageList([]); setActiveTab('chat'); if (socket) { socket.emit('join_room', job._id); socket.emit('mark_messages_read', { bookingId: job._id, userId: user.id }); } fetch(`${backendUrl}/api/chat/${job._id}`, { headers: { 'Authorization': `Bearer ${token}` } }).then(res => res.json()).then(data => setMessageList(Array.isArray(data) ? data : [])); };
-    const sendMessage = async () => { if (currentMessage && activeChatRoom && socket) { const msgData = { room: activeChatRoom._id, senderId: user.id, author: user.name, message: currentMessage, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}), isRead: false }; await socket.emit('send_message', msgData); setMessageList(list => [...list, msgData]); setCurrentMessage(""); } };
+    const openChat = async (job) => { 
+        setActiveChatRoom(job); 
+        setMessageList([]); 
+        setActiveTab('chat'); 
+        fetch(`${backendUrl}/api/chat/${job._id}`, { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(res => res.json())
+            .then(data => setMessageList(Array.isArray(data) ? data : [])); 
+    };
+
+    const sendMessage = async () => { 
+        if (currentMessage && activeChatRoom && socket) { 
+            const msgData = { room: activeChatRoom._id, senderId: user.id, author: user.name, message: currentMessage, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}), isRead: false }; 
+            await socket.emit('send_message', msgData); 
+            setMessageList(list => [...list, msgData]); 
+            setCurrentMessage(""); 
+        } 
+    };
+
     const updateJobStatus = async (id, status) => { const res = await fetch(`${backendUrl}/api/admin/bookings/${id}/status`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ status }) }); if (res.ok) setJobs(prev => prev.map(j => j._id === id ? { ...j, status } : j)); };
     const handleViewMap = async (job) => { setActiveChatRoom(job); setViewingMapForJob(job); try { const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(job.address)}`); const data = await res.json(); if (data.length > 0) setMapPosition([parseFloat(data[0].lat), parseFloat(data[0].lon)]); } catch (err) {} };
     
@@ -570,13 +631,33 @@ const ProfessionalApp = ({ socket, token }) => {
 const AppContent = () => {
     const { user, token } = useAuth();
     const [socket, setSocket] = useState(null);
+
+    // GUARANTEE WEBSOCKETS + AUTO-RECONNECT
     useEffect(() => { 
-        if (user && token && !socket) { 
-            const newSocket = io(backendUrl, { auth: { token } }); 
+        if (user && token) { 
+            const newSocket = io(backendUrl, { 
+                auth: { token },
+                transports: ['websocket', 'polling'], // Force Render to use websockets immediately
+                reconnection: true,
+                reconnectionAttempts: 10
+            }); 
+            
+            newSocket.on('connect', () => {
+                console.log('✅ Socket connected successfully with ID:', newSocket.id);
+            });
+
+            newSocket.on('connect_error', (err) => {
+                console.error('❌ Socket connection error:', err.message);
+            });
+
             setSocket(newSocket); 
-            return () => newSocket.close(); 
+            
+            return () => {
+                newSocket.disconnect(); 
+            };
         } 
-    }, [user, token, socket]);
+    }, [user, token]);
+
     if (!user) return <AuthScreen />;
     return user.role === 'professional' ? <ProfessionalApp socket={socket} token={token} /> : <ClientApp socket={socket} token={token} />;
 };
