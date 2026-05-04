@@ -92,6 +92,29 @@ io.on('connection', (socket) => {
         ...data,
         isRead: false 
       });
+
+      // ---> NEW: Create a notification for the message recipient
+      const booking = await Booking.findById(data.room);
+      if (booking) {
+        let recipientId;
+        if (data.senderId === booking.userId.toString()) {
+           const pro = await Professional.findById(booking.professionalId);
+           if (pro) recipientId = pro.userId;
+        } else {
+           recipientId = booking.userId;
+        }
+
+        if (recipientId) {
+            const notif = await createNotification(
+              recipientId, 
+              `New message from ${data.author}`, 
+              data.message, 
+              data.room, 
+              'message'
+            );
+            io.emit('new_notification', notif); 
+        }
+      }
     } catch (err) {
       console.error('Message save error:', err);
     }
@@ -138,9 +161,10 @@ io.on('connection', (socket) => {
   });
 });
 
-const createNotification = async (userId, title, message) => {
+// ---> NEW: Added bookingId and type parameters
+const createNotification = async (userId, title, message, bookingId = null, type = 'status') => {
   try {
-    const notif = new Notification({ userId, title, message });
+    const notif = new Notification({ userId, title, message, bookingId, type });
     await notif.save();
     return notif;
   } catch (err) {
@@ -148,8 +172,6 @@ const createNotification = async (userId, title, message) => {
   }
 };
 
-// Helper function to extract user ID bulletproofly 
-// (handles differences between raw JWTs and Mongoose documents)
 const getUserId = (req) => {
   if (!req.user) return null;
   return req.user._id || req.user.id || req.user.userId || req.userId;
@@ -326,11 +348,14 @@ app.post('/api/bookings', auth, checkRole('client'), async (req, res) => {
     try {
       const pro = await Professional.findById(professionalId);
       if (pro && pro.userId) {
-        await createNotification(
+        const notif = await createNotification(
           pro.userId, 
           'New Job Request!', 
-          `${clientName} booked you for ${date} at ${time}.`
+          `${clientName} booked you for ${date} at ${time}.`,
+          booking._id, // ---> NEW: Passing booking ID
+          'status'     // ---> NEW: Passing type
         );
+        io.emit('new_notification', notif);
       }
     } catch (notifErr) {
       console.error('Could not create notification, but booking succeeded:', notifErr.message);
@@ -388,11 +413,14 @@ app.patch('/api/admin/bookings/:id/status', auth, checkRole('admin', 'profession
     
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
 
-    await createNotification(
+    const notif = await createNotification(
       booking.userId,
       'Booking Update',
-      `Your booking with ${booking.professionalName} is now ${req.body.status}.`
+      `Your booking with ${booking.professionalName} is now ${req.body.status}.`,
+      booking._id, // ---> NEW: Passing booking ID
+      'status'     // ---> NEW: Passing type
     );
+    io.emit('new_notification', notif);
 
     res.json(booking);
   } catch (err) {
