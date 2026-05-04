@@ -71,13 +71,11 @@ io.use((socket, next) => {
 io.on('connection', (socket) => {
   console.log('⚡ Socket connected:', socket.user.id);
 
-  // Join a specific booking chat room
   socket.on('join_room', (roomId) => {
     socket.join(roomId);
     console.log(`User ${socket.user.id} joined room ${roomId}`);
   });
 
-  // Handle incoming messages
   socket.on('send_message', async (data) => {
     try {
       const newMessage = new Message({
@@ -90,7 +88,6 @@ io.on('connection', (socket) => {
       });
       await newMessage.save();
 
-      // Broadcast to EVERYONE in the room EXCEPT the sender
       socket.to(data.room).emit('receive_message', {
         ...data,
         isRead: false 
@@ -100,27 +97,22 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Handle live location sharing (Uber-style)
   socket.on('live_location_update', (data) => {
-    // Broadcast live GPS coordinates to the other person in the room
     socket.to(data.room).emit('receive_live_location', data);
   });
 
-  // Handle read receipts
   socket.on('mark_messages_read', async ({ bookingId, userId }) => {
     try {
       await Message.updateMany(
         { bookingId, senderId: { $ne: userId }, isRead: false },
         { $set: { isRead: true } }
       );
-      // Tell the sender their messages were just read
       socket.to(bookingId).emit('messages_read_update');
     } catch (err) {
       console.error('Read receipt error:', err);
     }
   });
 
-  // WebRTC Video Call Signaling
   socket.on('call_user', (data) => {
     socket.to(data.room).emit('incoming_call', {
       offer: data.offer,
@@ -146,13 +138,14 @@ io.on('connection', (socket) => {
   });
 });
 
-// Helper for sending DB notifications via REST
 const createNotification = async (userId, title, message) => {
-  const notif = new Notification({ userId, title, message });
-  await notif.save();
-  // Optional: If you wanted to push this instantly over socket to a specific user, 
-  // you would need a room-per-user mapping. For now, it stays in DB for polling/fetch.
-  return notif;
+  try {
+    const notif = new Notification({ userId, title, message });
+    await notif.save();
+    return notif;
+  } catch (err) {
+    console.error('Notification creation failed:', err.message);
+  }
 };
 
 // ==========================================
@@ -171,7 +164,7 @@ app.post('/api/signup', async (req, res) => {
     const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET || 'supersecretkey', { expiresIn: '7d' });
     res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role, favorites: [] } });
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: err.message || 'Server error' });
   }
 });
 
@@ -189,7 +182,7 @@ app.post('/api/pro-signup', async (req, res) => {
       userId: user._id,
       name,
       title,
-      headline: title, // Defaults to title initially
+      headline: title,
       category,
       price,
       distance: '0 km',
@@ -200,7 +193,7 @@ app.post('/api/pro-signup', async (req, res) => {
     const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET || 'supersecretkey', { expiresIn: '7d' });
     res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: err.message || 'Server error' });
   }
 });
 
@@ -216,12 +209,12 @@ app.post('/api/login', async (req, res) => {
     const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET || 'supersecretkey', { expiresIn: '7d' });
     res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, favorites: user.favorites || [] } });
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: err.message || 'Server error' });
   }
 });
 
 // ==========================================
-// 5. USER ROUTES (Avatar & Favorites)
+// 5. USER ROUTES
 // ==========================================
 app.post('/api/user/avatar', auth, upload.single('avatar'), async (req, res) => {
   try {
@@ -236,7 +229,7 @@ app.post('/api/user/avatar', auth, upload.single('avatar'), async (req, res) => 
     
     res.json({ avatar: avatarUrl });
   } catch (err) {
-    res.status(500).json({ message: 'Upload failed' });
+    res.status(500).json({ message: err.message || 'Upload failed' });
   }
 });
 
@@ -249,7 +242,7 @@ app.post('/api/user/favorites/:proId', auth, async (req, res) => {
     }
     res.json(user.favorites);
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: err.message || 'Server error' });
   }
 });
 
@@ -260,7 +253,7 @@ app.delete('/api/user/favorites/:proId', auth, async (req, res) => {
     await user.save();
     res.json(user.favorites);
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: err.message || 'Server error' });
   }
 });
 
@@ -272,7 +265,7 @@ app.get('/api/professionals', async (req, res) => {
     const pros = await Professional.find();
     res.json(pros);
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: err.message || 'Server error' });
   }
 });
 
@@ -285,7 +278,7 @@ app.put('/api/pro/profile', auth, checkRole('professional'), async (req, res) =>
     );
     res.json(updatedPro);
   } catch (err) {
-    res.status(500).json({ message: 'Update failed' });
+    res.status(500).json({ message: err.message || 'Update failed' });
   }
 });
 
@@ -296,6 +289,11 @@ app.post('/api/bookings', auth, checkRole('client'), async (req, res) => {
   try {
     const { professionalId, professionalName, clientName, date, time, address, totalPrice } = req.body;
     
+    // Check if the professional ID is valid before proceeding
+    if (!professionalId) {
+       return res.status(400).json({ message: 'Professional ID is missing from request.' });
+    }
+
     const booking = new Booking({
       userId: req.user.id,
       clientName,
@@ -309,19 +307,25 @@ app.post('/api/bookings', auth, checkRole('client'), async (req, res) => {
     
     await booking.save();
 
-    // Create Notification for the Professional
-    const pro = await Professional.findById(professionalId);
-    if (pro) {
-      await createNotification(
-        pro.userId, 
-        'New Job Request!', 
-        `${clientName} booked you for ${date} at ${time}.`
-      );
+    // Safely Create Notification for the Professional
+    try {
+      const pro = await Professional.findById(professionalId);
+      if (pro && pro.userId) {
+        await createNotification(
+          pro.userId, 
+          'New Job Request!', 
+          `${clientName} booked you for ${date} at ${time}.`
+        );
+      }
+    } catch (notifErr) {
+      console.error('Could not create notification, but booking succeeded:', notifErr.message);
     }
 
     res.status(201).json(booking);
   } catch (err) {
-    res.status(500).json({ message: 'Booking failed' });
+    console.error('Booking creation error:', err.message);
+    // This will now send the EXACT mongoose error back to the frontend (e.g., "address is required")
+    res.status(500).json({ message: err.message || 'Booking failed' });
   }
 });
 
@@ -330,7 +334,7 @@ app.get('/api/bookings', auth, checkRole('client'), async (req, res) => {
     const bookings = await Booking.find({ userId: req.user.id }).sort({ createdAt: -1 });
     res.json(bookings);
   } catch (err) {
-    res.status(500).json({ message: 'Failed to fetch bookings' });
+    res.status(500).json({ message: err.message || 'Failed to fetch bookings' });
   }
 });
 
@@ -342,7 +346,7 @@ app.get('/api/pro/bookings', auth, checkRole('professional'), async (req, res) =
     const bookings = await Booking.find({ professionalId: pro._id }).sort({ createdAt: -1 });
     res.json(bookings);
   } catch (err) {
-    res.status(500).json({ message: 'Failed to fetch bookings' });
+    res.status(500).json({ message: err.message || 'Failed to fetch bookings' });
   }
 });
 
@@ -356,7 +360,7 @@ app.patch('/api/bookings/:id/cancel', auth, checkRole('client'), async (req, res
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
     res.json(booking);
   } catch (err) {
-    res.status(500).json({ message: 'Cancellation failed' });
+    res.status(500).json({ message: err.message || 'Cancellation failed' });
   }
 });
 
@@ -370,7 +374,6 @@ app.patch('/api/admin/bookings/:id/status', auth, checkRole('admin', 'profession
     
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
 
-    // Notify the client about the status change
     await createNotification(
       booking.userId,
       'Booking Update',
@@ -379,7 +382,7 @@ app.patch('/api/admin/bookings/:id/status', auth, checkRole('admin', 'profession
 
     res.json(booking);
   } catch (err) {
-    res.status(500).json({ message: 'Update failed' });
+    res.status(500).json({ message: err.message || 'Update failed' });
   }
 });
 
@@ -391,7 +394,7 @@ app.get('/api/notifications', auth, async (req, res) => {
     const notifications = await Notification.find({ userId: req.user.id }).sort({ createdAt: -1 });
     res.json(notifications);
   } catch (err) {
-    res.status(500).json({ message: 'Failed to fetch notifications' });
+    res.status(500).json({ message: err.message || 'Failed to fetch notifications' });
   }
 });
 
@@ -400,7 +403,7 @@ app.patch('/api/notifications/read', auth, async (req, res) => {
     await Notification.updateMany({ userId: req.user.id, isRead: false }, { isRead: true });
     res.json({ message: 'Marked as read' });
   } catch (err) {
-    res.status(500).json({ message: 'Failed to update notifications' });
+    res.status(500).json({ message: err.message || 'Failed to update notifications' });
   }
 });
 
@@ -409,7 +412,7 @@ app.get('/api/chat/:bookingId', auth, async (req, res) => {
     const messages = await Message.find({ bookingId: req.params.bookingId }).sort({ createdAt: 1 });
     res.json(messages);
   } catch (err) {
-    res.status(500).json({ message: 'Failed to fetch chat history' });
+    res.status(500).json({ message: err.message || 'Failed to fetch chat history' });
   }
 });
 
