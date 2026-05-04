@@ -427,50 +427,48 @@ const ClientApp = ({ socket, token }) => {
     <div className="bg-bgLight w-full h-screen relative flex flex-col overflow-hidden text-gray-900">
       <CallUI {...callLogic} />
       
-      {/* HEADER: Spans full width, content centered */}
-      <div className="bg-white px-6 py-4 shadow-sm flex justify-center z-10 sticky top-0 w-full">
-        <div className="w-full max-w-3xl flex justify-between items-center">
-            <div><h1 className="text-2xl font-black text-primary">Servly</h1><p className="text-xs text-gray-500 font-bold flex items-center"><i className="fas fa-map-marker-alt text-teal-500 mr-1"></i> Kano, NG</p></div>
-            <div className="flex items-center gap-3">
-                <div className="relative">
-                    <button onClick={markNotificationsRead} className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 relative"><i className="fas fa-bell"></i>{unreadCount > 0 && <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>}</button>
-                    {showNotifications && (
-                        <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden z-50">
-                            <div className="px-6 py-3 bg-gray-50 border-b border-gray-100"><h3 className="font-bold text-sm text-gray-700">Notifications</h3></div>
-                            <div className="max-h-64 overflow-y-auto">
-                                {notifications.length === 0 ? (
-                                    <p className="px-6 py-4 text-center text-sm text-gray-500">No notifications yet</p>
-                                ) : (
-                                    notifications.map(n => (
-                                        <div key={n._id} className={`px-6 py-3 border-b border-gray-50 ${!n.isRead ? 'bg-teal-50/30' : ''}`}>
-                                            <h4 className="text-xs font-bold text-gray-800">{n.title}</h4>
-                                            <p className="text-xs text-gray-500 mt-1">{n.message}</p>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
+      {/* FULL WIDTH HEADER */}
+      <div className="bg-white px-6 py-4 shadow-sm flex justify-between items-center z-10 sticky top-0 w-full">
+        <div><h1 className="text-2xl font-black text-primary">Servly</h1><p className="text-xs text-gray-500 font-bold flex items-center"><i className="fas fa-map-marker-alt text-teal-500 mr-1"></i> Kano, NG</p></div>
+        <div className="flex items-center gap-3">
+            <div className="relative">
+                <button onClick={markNotificationsRead} className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 relative"><i className="fas fa-bell"></i>{unreadCount > 0 && <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>}</button>
+                {showNotifications && (
+                    <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden z-50">
+                        <div className="px-6 py-3 bg-gray-50 border-b border-gray-100"><h3 className="font-bold text-sm text-gray-700">Notifications</h3></div>
+                        <div className="max-h-64 overflow-y-auto">
+                            {notifications.length === 0 ? (
+                                <p className="px-6 py-4 text-center text-sm text-gray-500">No notifications yet</p>
+                            ) : (
+                                notifications.map(n => (
+                                    <div key={n._id} className={`px-6 py-3 border-b border-gray-50 ${!n.isRead ? 'bg-teal-50/30' : ''}`}>
+                                        <h4 className="text-xs font-bold text-gray-800">{n.title}</h4>
+                                        <p className="text-xs text-gray-500 mt-1">{n.message}</p>
+                                    </div>
+                                ))
+                            )}
                         </div>
-                    )}
-                </div>
-                <img src={user.avatar || `https://ui-avatars.com/api/?name=${user.name.replace(/ /g,'+')}&background=0D8ABC&color=fff`} className="w-10 h-10 rounded-full shadow-sm cursor-pointer object-cover" onClick={() => setActiveTab('profile')} alt="Profile" />
+                    </div>
+                )}
             </div>
+            <img src={user.avatar || `https://ui-avatars.com/api/?name=${user.name.replace(/ /g,'+')}&background=0D8ABC&color=fff`} className="w-10 h-10 rounded-full shadow-sm cursor-pointer object-cover" onClick={() => setActiveTab('profile')} alt="Profile" />
         </div>
       </div>
       
-      {/* MAIN TABS CONTAINER: Fills screen vertically, content stays max-w-3xl */}
-      <div className="flex-1 overflow-y-auto hide-scrollbar flex flex-col relative w-full items-center">
+      {/* MAIN TABS CONTAINER: Fully stretched across the screen */}
+      <div className="w-full flex-1 overflow-y-auto hide-scrollbar flex flex-col relative">
         
         {activeTab === 'home' && (
-          <div className="w-full max-w-3xl px-6 pt-6 pb-28 flex flex-col">
-            <div className="relative mb-6 shadow-sm"><i className="fas fa-search absolute left-4 top-3.5 text-gray-400"></i><input type="text" placeholder="Search services..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white py-3.5 pl-12 pr-4 rounded-2xl text-sm outline-none border border-gray-100" /></div>
+          <div className="w-full px-6 pt-6 pb-28 flex flex-col">
+            <div className="relative mb-6 shadow-sm w-full"><i className="fas fa-search absolute left-4 top-3.5 text-gray-400"></i><input type="text" placeholder="Search services..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white py-3.5 pl-12 pr-4 rounded-2xl text-sm outline-none border border-gray-100" /></div>
             <div className="flex justify-between items-end mb-4"><h2 className="text-lg font-bold text-gray-800">Categories</h2></div>
-            <div className="grid grid-cols-4 gap-3 mb-8">{categories.map(cat => (<div key={cat.id} onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)} className={`flex flex-col items-center justify-center p-3 rounded-2xl cursor-pointer transition ${selectedCategory === cat.id ? 'bg-primary text-white shadow-md' : `${cat.bg} ${cat.color}`}`}><i className={`fas ${cat.icon} text-xl mb-2`}></i><span className={`text-[10px] font-bold ${selectedCategory === cat.id ? 'text-white' : 'text-gray-600'}`}>{cat.name}</span></div>))}</div>
+            <div className="grid grid-cols-4 gap-3 mb-8 w-full">{categories.map(cat => (<div key={cat.id} onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)} className={`flex flex-col items-center justify-center p-3 rounded-2xl cursor-pointer transition ${selectedCategory === cat.id ? 'bg-primary text-white shadow-md' : `${cat.bg} ${cat.color}`}`}><i className={`fas ${cat.icon} text-xl mb-2`}></i><span className={`text-[10px] font-bold ${selectedCategory === cat.id ? 'text-white' : 'text-gray-600'}`}>{cat.name}</span></div>))}</div>
             
             <div className="flex justify-between items-end mb-4"><h2 className="text-lg font-bold text-gray-800">Top Professionals</h2></div>
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4 w-full">
                 {paginatedPros.map(pro => (
-                    <div key={pro._id} onClick={() => setViewingProfile(pro)} className="bg-white p-4 rounded-2xl flex items-center shadow-sm border border-gray-50 cursor-pointer hover:shadow-md transition">
-                        <div className="relative"><img src={pro.avatar || `https://ui-avatars.com/api/?name=${pro.name.replace(/ /g,'+')}&background=0D8ABC&color=fff`} className="w-16 h-16 rounded-2xl object-cover" alt={pro.name} />{pro.verified && <div className="absolute -top-2 -right-2 bg-blue-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] border-2 border-white"><i className="fas fa-check"></i></div>}</div>
+                    <div key={pro._id} onClick={() => setViewingProfile(pro)} className="w-full bg-white p-4 rounded-2xl flex items-center shadow-sm border border-gray-50 cursor-pointer hover:shadow-md transition">
+                        <div className="relative flex-shrink-0"><img src={pro.avatar || `https://ui-avatars.com/api/?name=${pro.name.replace(/ /g,'+')}&background=0D8ABC&color=fff`} className="w-16 h-16 rounded-2xl object-cover" alt={pro.name} />{pro.verified && <div className="absolute -top-2 -right-2 bg-blue-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] border-2 border-white"><i className="fas fa-check"></i></div>}</div>
                         <div className="ml-4 flex-1"><div><h3 className="font-bold text-gray-800 text-base">{pro.name}</h3><p className="text-xs text-teal-600 font-bold">{pro.title}</p></div><div className="flex items-center mt-2 text-xs text-gray-500 font-medium"><span className="flex items-center text-orange-500 mr-3"><i className="fas fa-star mr-1"></i> {pro.rating}</span><span className="flex items-center"><i className="fas fa-map-marker-alt mr-1"></i> {pro.distance}</span></div></div>
                         <div className="flex flex-col items-end justify-between h-full"><button onClick={(e) => toggleFavorite(e, pro._id)} className="text-gray-300 hover:text-red-500"><i className={`${favorites.includes(pro._id) ? 'fas text-red-500' : 'far'} fa-heart text-lg`}></i></button><p className="font-black text-gray-800 mt-3">₦{pro.price}<span className="text-[10px] text-gray-400 font-medium">/hr</span></p></div>
                     </div>
@@ -482,40 +480,40 @@ const ClientApp = ({ socket, token }) => {
         )}
 
         {activeTab === 'bookings' && (
-          <div className="w-full max-w-3xl px-6 pt-6 pb-28 flex flex-col">
+          <div className="w-full px-6 pt-6 pb-28 flex flex-col">
             <h2 className="text-2xl font-bold mb-6">My Bookings</h2>
             {paginatedBookings.map(b => (
-                <div key={b._id} className="bg-white p-4 rounded-2xl mb-4 shadow-sm border border-gray-100">
-                    <div className="flex justify-between items-start mb-3 border-b border-gray-50 pb-3"><div><h3 className="font-bold text-gray-800">{b.professionalName}</h3><p className="text-xs text-gray-500">{b.date} at {b.time}</p></div><div className={`px-2 py-1 rounded text-[10px] uppercase font-bold ${b.status === 'confirmed' ? 'bg-green-100 text-green-600' : b.status === 'completed' ? 'bg-blue-100 text-blue-600' : b.status === 'cancelled' ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'}`}>{b.status}</div></div>
-                    <div className="flex gap-2 mt-3"><button onClick={() => openPrivateChat(b)} className="flex-1 py-2 bg-teal-50 text-teal-600 text-xs font-bold rounded-lg hover:bg-teal-100 transition"><i className="fas fa-comment-dots mr-1"></i> Chat</button>{b.status === 'pending' && <button onClick={() => handleCancelBooking(b._id)} className="flex-1 py-2 bg-red-50 text-red-600 text-xs font-bold rounded-lg hover:bg-red-100 transition">Cancel</button>}</div>
+                <div key={b._id} className="w-full bg-white p-4 rounded-2xl mb-4 shadow-sm border border-gray-100">
+                    <div className="flex justify-between items-start mb-3 border-b border-gray-50 pb-3 w-full"><div><h3 className="font-bold text-gray-800">{b.professionalName}</h3><p className="text-xs text-gray-500">{b.date} at {b.time}</p></div><div className={`px-2 py-1 rounded text-[10px] uppercase font-bold ${b.status === 'confirmed' ? 'bg-green-100 text-green-600' : b.status === 'completed' ? 'bg-blue-100 text-blue-600' : b.status === 'cancelled' ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'}`}>{b.status}</div></div>
+                    <div className="flex gap-2 mt-3 w-full"><button onClick={() => openPrivateChat(b)} className="flex-1 py-2 bg-teal-50 text-teal-600 text-xs font-bold rounded-lg hover:bg-teal-100 transition"><i className="fas fa-comment-dots mr-1"></i> Chat</button>{b.status === 'pending' && <button onClick={() => handleCancelBooking(b._id)} className="flex-1 py-2 bg-red-50 text-red-600 text-xs font-bold rounded-lg hover:bg-red-100 transition">Cancel</button>}</div>
                 </div>
             ))}
-            {paginatedBookings.length === 0 && <p className="text-center text-sm text-gray-400 py-8">You have no bookings.</p>}
+            {paginatedBookings.length === 0 && <p className="text-center text-sm text-gray-400 py-8 w-full">You have no bookings.</p>}
             <Pagination currentPage={bookingPage} totalPages={totalBookingPages} onPageChange={setBookingPage} />
           </div>
         )}
 
         {activeTab === 'chat' && activeChatRoom && (
-          <div className="w-full max-w-3xl flex-1 flex flex-col bg-gray-50 relative pb-20">
-            <div className="bg-white px-6 py-4 flex items-center justify-between shadow-sm sticky top-0 z-20"><div className="flex items-center"><button onClick={() => setActiveTab('bookings')} className="mr-4 text-gray-400"><i className="fas fa-arrow-left"></i></button><div><h3 className="font-bold text-gray-800 text-sm">{activeChatRoom.professionalName}</h3><p className="text-[10px] text-teal-600 font-bold">Booking Chat</p></div></div><div className="flex gap-3"><button onClick={callLogic.startCall} className="w-8 h-8 bg-teal-50 text-teal-600 rounded-full flex items-center justify-center text-xs"><i className="fas fa-video"></i></button></div></div>
-            <div className="flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-4">{messageList.map((msg, i) => { const isMe = msg.senderId === user.id; return (<div key={i} className={`max-w-[75%] p-3 rounded-2xl text-sm shadow-sm ${isMe ? 'bg-primary text-white self-end rounded-br-sm' : 'bg-white text-gray-800 self-start rounded-bl-sm border border-gray-100'}`}><p>{msg.message}</p><div className="flex items-center justify-end mt-1 gap-1"><span className={`text-[9px] ${isMe ? 'text-teal-100' : 'text-gray-400'}`}>{msg.time}</span>{isMe && <span className={`text-[10px] ${msg.isRead ? 'text-blue-300' : 'text-teal-200'}`}>{msg.isRead ? '✓✓' : '✓'}</span>}</div></div>); })}<div ref={chatEndRef} /></div>
+          <div className="w-full flex-1 flex flex-col bg-gray-50 relative pb-20">
+            <div className="bg-white px-6 py-4 flex items-center justify-between shadow-sm sticky top-0 z-20 w-full"><div className="flex items-center"><button onClick={() => setActiveTab('bookings')} className="mr-4 text-gray-400"><i className="fas fa-arrow-left"></i></button><div><h3 className="font-bold text-gray-800 text-sm">{activeChatRoom.professionalName}</h3><p className="text-[10px] text-teal-600 font-bold">Booking Chat</p></div></div><div className="flex gap-3"><button onClick={callLogic.startCall} className="w-8 h-8 bg-teal-50 text-teal-600 rounded-full flex items-center justify-center text-xs"><i className="fas fa-video"></i></button></div></div>
+            <div className="w-full flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-4">{messageList.map((msg, i) => { const isMe = msg.senderId === user.id; return (<div key={i} className={`max-w-[75%] p-3 rounded-2xl text-sm shadow-sm ${isMe ? 'bg-primary text-white self-end rounded-br-sm' : 'bg-white text-gray-800 self-start rounded-bl-sm border border-gray-100'}`}><p>{msg.message}</p><div className="flex items-center justify-end mt-1 gap-1"><span className={`text-[9px] ${isMe ? 'text-teal-100' : 'text-gray-400'}`}>{msg.time}</span>{isMe && <span className={`text-[10px] ${msg.isRead ? 'text-blue-300' : 'text-teal-200'}`}>{msg.isRead ? '✓✓' : '✓'}</span>}</div></div>); })}<div ref={chatEndRef} /></div>
             
             <div className="absolute bottom-0 w-full bg-white py-4 px-6 border-t border-gray-100 flex items-center gap-2">
-                <div className="relative">
+                <div className="relative flex-shrink-0">
                     <button onClick={() => setViewingLiveMap(!viewingLiveMap)} className="w-10 h-10 bg-gray-50 rounded-full text-gray-400 flex items-center justify-center"><i className="fas fa-map-marker-alt"></i></button>
                     {isSharingLocation && <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full animate-ping"></div>}
                 </div>
-                <input type="text" placeholder="Type message..." value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} onKeyPress={e => e.key === 'Enter' && sendMessage()} className="flex-1 bg-gray-50 py-3 px-4 rounded-full text-sm outline-none border border-gray-100" />
-                <button onClick={sendMessage} className="w-10 h-10 bg-primary text-white rounded-full flex items-center justify-center shadow-md"><i className="fas fa-paper-plane"></i></button>
+                <input type="text" placeholder="Type message..." value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} onKeyPress={e => e.key === 'Enter' && sendMessage()} className="flex-1 w-full bg-gray-50 py-3 px-4 rounded-full text-sm outline-none border border-gray-100" />
+                <button onClick={sendMessage} className="flex-shrink-0 w-10 h-10 bg-primary text-white rounded-full flex items-center justify-center shadow-md"><i className="fas fa-paper-plane"></i></button>
             </div>
 
             {viewingLiveMap && (
               <div className="absolute inset-0 w-full h-full bg-white z-30 flex flex-col">
-                  <div className="px-6 py-4 flex justify-between items-center bg-white shadow-sm z-40">
+                  <div className="px-6 py-4 flex justify-between items-center bg-white shadow-sm z-40 w-full">
                       <h3 className="font-bold text-sm">Live Location Tracking</h3>
                       <button onClick={() => setViewingLiveMap(false)} className="text-gray-500"><i className="fas fa-times"></i></button>
                   </div>
-                  <div className="flex-1 relative">
+                  <div className="w-full flex-1 relative">
                       <MapContainer center={mapCenter} zoom={15} style={{ height: '100%', width: '100%' }}>
                           <LiveMapUpdater center={mapCenter} />
                           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
@@ -531,7 +529,7 @@ const ClientApp = ({ socket, token }) => {
         )}
 
         {activeTab === 'chat' && !activeChatRoom && (
-            <div className="w-full max-w-3xl flex-1 flex flex-col items-center justify-center text-gray-400 pb-28 px-6">
+            <div className="w-full flex-1 flex flex-col items-center justify-center text-gray-400 pb-28 px-6">
                 <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4"><i className="fas fa-comments text-3xl opacity-50"></i></div>
                 <h3 className="font-bold text-gray-600">No Chat Selected</h3>
                 <p className="text-xs mt-1 text-center">Open a booking to start chatting.</p>
@@ -540,9 +538,9 @@ const ClientApp = ({ socket, token }) => {
         )}
 
         {activeTab === 'profile' && (
-          <div className="w-full max-w-3xl px-6 pt-6 pb-28 flex flex-col">
+          <div className="w-full px-6 pt-6 pb-28 flex flex-col">
               <h2 className="text-2xl font-bold mb-6">Profile</h2>
-              <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center mb-6"><input type="file" accept="image/*" className="hidden" ref={avatarInputRef} onChange={handleAvatarUpload}/><div className="relative mb-4"><img src={user.avatar || `https://ui-avatars.com/api/?name=${user.name.replace(/ /g,'+')}&background=0D8ABC&color=fff`} className="w-24 h-24 rounded-full object-cover shadow-md" alt="Avatar" /><button onClick={() => avatarInputRef.current.click()} className="absolute bottom-0 right-0 w-8 h-8 bg-teal-500 text-white rounded-full flex items-center justify-center border-2 border-white shadow-sm hover:bg-teal-600"><i className="fas fa-camera text-xs"></i></button></div><h3 className="text-xl font-bold text-gray-800">{user.name}</h3><p className="text-sm text-gray-500">{user.email}</p></div>
+              <div className="w-full bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center mb-6"><input type="file" accept="image/*" className="hidden" ref={avatarInputRef} onChange={handleAvatarUpload}/><div className="relative mb-4"><img src={user.avatar || `https://ui-avatars.com/api/?name=${user.name.replace(/ /g,'+')}&background=0D8ABC&color=fff`} className="w-24 h-24 rounded-full object-cover shadow-md" alt="Avatar" /><button onClick={() => avatarInputRef.current.click()} className="absolute bottom-0 right-0 w-8 h-8 bg-teal-500 text-white rounded-full flex items-center justify-center border-2 border-white shadow-sm hover:bg-teal-600"><i className="fas fa-camera text-xs"></i></button></div><h3 className="text-xl font-bold text-gray-800">{user.name}</h3><p className="text-sm text-gray-500">{user.email}</p></div>
               <button onClick={logout} className="w-full py-4 bg-red-50 text-red-500 font-bold rounded-2xl border border-red-100 flex items-center justify-center hover:bg-red-100 transition"><i className="fas fa-sign-out-alt mr-2"></i> Log Out</button>
           </div>
         )}
@@ -550,50 +548,46 @@ const ClientApp = ({ socket, token }) => {
 
       {/* OVERLAYS (PROFILE, BOOKING, SUCCESS) */}
       {viewingProfile && !bookingPro && (
-        <div className="absolute inset-0 w-full h-screen bg-bgLight z-50 overflow-y-auto flex flex-col items-center animate-[slideUp_0.3s_ease-out]">
-            <div className="w-full max-w-3xl bg-white min-h-full pb-10 shadow-sm relative">
-                <div className="relative h-64 bg-gray-100 px-6">
-                    <img src={viewingProfile.avatar || `https://ui-avatars.com/api/?name=${viewingProfile.name.replace(/ /g,'+')}&background=0D8ABC&color=fff`} className="absolute inset-0 w-full h-full object-cover" alt="Profile" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
-                    <button onClick={() => setViewingProfile(null)} className="absolute top-6 left-6 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white border border-white/30 hover:bg-white/40"><i className="fas fa-arrow-left"></i></button>
-                </div>
-                <div className="px-6 -mt-16 relative z-10">
-                    <div className="bg-white rounded-3xl p-6 shadow-xl border border-gray-50">
-                        <div className="flex justify-between items-start mb-4">
-                            <div><h2 className="text-2xl font-black text-gray-800">{viewingProfile.name}</h2><p className="text-teal-600 font-bold mt-1 text-sm">{viewingProfile.headline}</p></div>
-                            <div className="bg-teal-50 text-primary px-3 py-1.5 rounded-xl font-black text-sm">₦{viewingProfile.price}<span className="text-[10px] text-teal-600/60 ml-1">/hr</span></div>
-                        </div>
-                        <div className="flex gap-4 mb-6 text-sm font-bold text-gray-600">
-                            <span className="flex items-center"><i className="fas fa-star text-orange-400 mr-1.5"></i> {viewingProfile.rating}</span>
-                            <span className="flex items-center"><i className="fas fa-map-marker-alt text-teal-400 mr-1.5"></i> {viewingProfile.distance}</span>
-                            <span className="flex items-center text-blue-500 bg-blue-50 px-2 py-0.5 rounded-lg"><i className="fas fa-check-circle mr-1"></i> Verified</span>
-                        </div>
-                        <h3 className="font-bold text-gray-800 mb-3">About</h3>
-                        <p className="text-sm text-gray-500 leading-relaxed mb-6">Expert {viewingProfile.category} professional with years of experience delivering top-tier service. Committed to quality, punctuality, and client satisfaction.</p>
-                        <button onClick={() => setBookingPro(viewingProfile)} className="w-full bg-primary text-white font-bold py-4 rounded-2xl shadow-lg shadow-teal-500/30 active:scale-95 hover:bg-teal-700 transition">Book Now</button>
+        <div className="absolute inset-0 w-full h-screen bg-white z-50 overflow-y-auto flex flex-col animate-[slideUp_0.3s_ease-out]">
+            <div className="w-full relative h-64 bg-gray-100 px-6">
+                <img src={viewingProfile.avatar || `https://ui-avatars.com/api/?name=${viewingProfile.name.replace(/ /g,'+')}&background=0D8ABC&color=fff`} className="absolute inset-0 w-full h-full object-cover" alt="Profile" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+                <button onClick={() => setViewingProfile(null)} className="absolute top-6 left-6 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white border border-white/30 hover:bg-white/40"><i className="fas fa-arrow-left"></i></button>
+            </div>
+            <div className="w-full px-6 -mt-16 relative z-10 pb-10">
+                <div className="w-full bg-white rounded-3xl p-6 shadow-xl border border-gray-50">
+                    <div className="flex justify-between items-start mb-4">
+                        <div><h2 className="text-2xl font-black text-gray-800">{viewingProfile.name}</h2><p className="text-teal-600 font-bold mt-1 text-sm">{viewingProfile.headline}</p></div>
+                        <div className="bg-teal-50 text-primary px-3 py-1.5 rounded-xl font-black text-sm flex-shrink-0">₦{viewingProfile.price}<span className="text-[10px] text-teal-600/60 ml-1">/hr</span></div>
                     </div>
+                    <div className="flex gap-4 mb-6 text-sm font-bold text-gray-600 w-full">
+                        <span className="flex items-center"><i className="fas fa-star text-orange-400 mr-1.5"></i> {viewingProfile.rating}</span>
+                        <span className="flex items-center"><i className="fas fa-map-marker-alt text-teal-400 mr-1.5"></i> {viewingProfile.distance}</span>
+                        <span className="flex items-center text-blue-500 bg-blue-50 px-2 py-0.5 rounded-lg"><i className="fas fa-check-circle mr-1"></i> Verified</span>
+                    </div>
+                    <h3 className="font-bold text-gray-800 mb-3">About</h3>
+                    <p className="text-sm text-gray-500 leading-relaxed mb-6">Expert {viewingProfile.category} professional with years of experience delivering top-tier service. Committed to quality, punctuality, and client satisfaction.</p>
+                    <button onClick={() => setBookingPro(viewingProfile)} className="w-full bg-primary text-white font-bold py-4 rounded-2xl shadow-lg shadow-teal-500/30 active:scale-95 hover:bg-teal-700 transition">Book Now</button>
                 </div>
             </div>
         </div>
       )}
       
       {bookingPro && !isBookingSuccess && (
-        <div className="absolute inset-0 w-full h-screen bg-bgLight z-[60] flex flex-col items-center">
-            <div className="w-full bg-white px-6 py-4 flex items-center justify-center shadow-sm">
-                <div className="w-full max-w-3xl flex items-center">
-                    <button onClick={() => setBookingPro(null)} className="mr-4 text-gray-400 hover:text-gray-600"><i className="fas fa-arrow-left"></i></button>
-                    <h2 className="font-bold text-gray-800">Book Service</h2>
-                </div>
+        <div className="absolute inset-0 w-full h-screen bg-bgLight z-[60] flex flex-col">
+            <div className="w-full bg-white px-6 py-4 flex items-center shadow-sm">
+                <button onClick={() => setBookingPro(null)} className="mr-4 text-gray-400 hover:text-gray-600"><i className="fas fa-arrow-left"></i></button>
+                <h2 className="font-bold text-gray-800">Book Service</h2>
             </div>
-            <div className="w-full max-w-3xl flex-1 p-6 overflow-y-auto hide-scrollbar">
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-50 flex items-center mb-6">
+            <div className="w-full flex-1 p-6 overflow-y-auto hide-scrollbar">
+                <div className="w-full bg-white p-4 rounded-2xl shadow-sm border border-gray-50 flex items-center mb-6">
                     <img src={bookingPro.avatar || `https://ui-avatars.com/api/?name=${bookingPro.name.replace(/ /g,'+')}&background=0D8ABC&color=fff`} className="w-12 h-12 rounded-xl object-cover" alt="Pro" />
                     <div className="ml-3"><h3 className="font-bold text-sm text-gray-800">{bookingPro.name}</h3><p className="text-xs text-gray-500 font-bold">₦{bookingPro.price}/hr</p></div>
                 </div>
-                <form onSubmit={handleBookingSubmit}>
-                    <div className="mb-4"><label className="text-xs font-bold text-gray-500 ml-1">Select Date</label><input type="date" required value={bookingData.date} onChange={e => setBookingData({...bookingData, date: e.target.value})} className="w-full bg-white border border-gray-200 p-4 rounded-xl mt-1 outline-none text-sm font-medium shadow-sm" /></div>
-                    <div className="mb-4"><label className="text-xs font-bold text-gray-500 ml-1">Select Time</label><input type="time" required value={bookingData.time} onChange={e => setBookingData({...bookingData, time: e.target.value})} className="w-full bg-white border border-gray-200 p-4 rounded-xl mt-1 outline-none text-sm font-medium shadow-sm" /></div>
-                    <div className="mb-8"><label className="text-xs font-bold text-gray-500 ml-1">Service Address</label><textarea required placeholder="Enter full address..." value={bookingData.address} onChange={e => setBookingData({...bookingData, address: e.target.value})} className="w-full bg-white border border-gray-200 p-4 rounded-xl mt-1 outline-none text-sm font-medium shadow-sm h-24 resize-none" /></div>
+                <form onSubmit={handleBookingSubmit} className="w-full">
+                    <div className="mb-4 w-full"><label className="text-xs font-bold text-gray-500 ml-1">Select Date</label><input type="date" required value={bookingData.date} onChange={e => setBookingData({...bookingData, date: e.target.value})} className="w-full bg-white border border-gray-200 p-4 rounded-xl mt-1 outline-none text-sm font-medium shadow-sm" /></div>
+                    <div className="mb-4 w-full"><label className="text-xs font-bold text-gray-500 ml-1">Select Time</label><input type="time" required value={bookingData.time} onChange={e => setBookingData({...bookingData, time: e.target.value})} className="w-full bg-white border border-gray-200 p-4 rounded-xl mt-1 outline-none text-sm font-medium shadow-sm" /></div>
+                    <div className="mb-8 w-full"><label className="text-xs font-bold text-gray-500 ml-1">Service Address</label><textarea required placeholder="Enter full address..." value={bookingData.address} onChange={e => setBookingData({...bookingData, address: e.target.value})} className="w-full bg-white border border-gray-200 p-4 rounded-xl mt-1 outline-none text-sm font-medium shadow-sm h-24 resize-none" /></div>
                     <button type="submit" className="w-full bg-primary text-white font-bold py-4 rounded-2xl shadow-lg shadow-teal-500/30 hover:bg-teal-700 transition">Confirm Booking</button>
                 </form>
             </div>
@@ -605,18 +599,16 @@ const ClientApp = ({ socket, token }) => {
             <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center text-primary text-4xl mb-6 shadow-2xl animate-[bounce_1s_ease-out]"><i className="fas fa-check"></i></div>
             <h2 className="text-3xl font-black text-white mb-2">Booking Confirmed!</h2>
             <p className="text-teal-100 mb-10 text-sm font-medium">Your service with {bookingPro?.name} is scheduled.</p>
-            <button onClick={() => { setIsBookingSuccess(false); setBookingPro(null); setViewingProfile(null); setActiveTab('bookings'); }} className="bg-white text-primary font-black py-4 px-12 rounded-2xl shadow-xl hover:bg-gray-50 transition">View My Bookings</button>
+            <button onClick={() => { setIsBookingSuccess(false); setBookingPro(null); setViewingProfile(null); setActiveTab('bookings'); }} className="w-full bg-white text-primary font-black py-4 px-12 rounded-2xl shadow-xl hover:bg-gray-50 transition">View My Bookings</button>
         </div>
       )}
 
-      {/* BOTTOM NAV BAR: Spans full width, icons centered */}
-      <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 shadow-[0_-10px_40px_rgba(0,0,0,0.03)] flex justify-center z-10">
-          <div className="w-full max-w-3xl flex justify-around py-4 px-6 pb-safe">
-              <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center transition hover:scale-110 ${activeTab === 'home' ? 'text-primary scale-110' : 'text-gray-400'}`}><i className="fas fa-home text-xl mb-1"></i><span className="text-[9px] font-bold">Home</span></button>
-              <button onClick={() => setActiveTab('bookings')} className={`flex flex-col items-center transition hover:scale-110 ${activeTab === 'bookings' ? 'text-primary scale-110' : 'text-gray-400'}`}><i className="fas fa-calendar-alt text-xl mb-1"></i><span className="text-[9px] font-bold">Bookings</span></button>
-              <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center transition hover:scale-110 ${activeTab === 'chat' ? 'text-primary scale-110' : 'text-gray-400'}`}><i className="fas fa-comment-dots text-xl mb-1"></i><span className="text-[9px] font-bold">Chat</span></button>
-              <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center transition hover:scale-110 ${activeTab === 'profile' ? 'text-primary scale-110' : 'text-gray-400'}`}><i className="fas fa-user text-xl mb-1"></i><span className="text-[9px] font-bold">Profile</span></button>
-          </div>
+      {/* FULL WIDTH BOTTOM NAV BAR */}
+      <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 shadow-[0_-10px_40px_rgba(0,0,0,0.03)] z-10 flex justify-around py-4 px-6 pb-6">
+          <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center transition hover:scale-110 ${activeTab === 'home' ? 'text-primary scale-110' : 'text-gray-400'}`}><i className="fas fa-home text-xl mb-1"></i><span className="text-[9px] font-bold">Home</span></button>
+          <button onClick={() => setActiveTab('bookings')} className={`flex flex-col items-center transition hover:scale-110 ${activeTab === 'bookings' ? 'text-primary scale-110' : 'text-gray-400'}`}><i className="fas fa-calendar-alt text-xl mb-1"></i><span className="text-[9px] font-bold">Bookings</span></button>
+          <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center transition hover:scale-110 ${activeTab === 'chat' ? 'text-primary scale-110' : 'text-gray-400'}`}><i className="fas fa-comment-dots text-xl mb-1"></i><span className="text-[9px] font-bold">Chat</span></button>
+          <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center transition hover:scale-110 ${activeTab === 'profile' ? 'text-primary scale-110' : 'text-gray-400'}`}><i className="fas fa-user text-xl mb-1"></i><span className="text-[9px] font-bold">Profile</span></button>
       </div>
     </div>
   );
@@ -751,37 +743,37 @@ const ProfessionalApp = ({ socket, token }) => {
     const paginatedJobs = jobs.slice((jobPage - 1) * ITEMS_PER_PAGE, jobPage * ITEMS_PER_PAGE);
 
     return (
-        <div className="bg-gray-900 w-full h-screen relative flex flex-col text-white overflow-hidden">
+        <div className="w-full h-screen relative flex flex-col bg-gray-900 text-white overflow-hidden">
             <CallUI {...callLogic} />
             
-            {/* MAIN TABS CONTAINER */}
-            <div className="flex-1 overflow-y-auto hide-scrollbar flex flex-col relative w-full items-center">
+            {/* MAIN TABS CONTAINER: Fully stretched */}
+            <div className="w-full flex-1 overflow-y-auto hide-scrollbar flex flex-col relative">
                 
                 {activeTab === 'jobs' && (
-                    <div className="w-full max-w-3xl px-6 pt-10 pb-28 flex flex-col">
-                        <h2 className="text-2xl font-bold mb-6">My Jobs</h2>
+                    <div className="w-full px-6 pt-10 pb-28 flex flex-col">
+                        <h2 className="text-2xl font-bold mb-6 w-full">My Jobs</h2>
                         {paginatedJobs.map(job => (
-                            <div key={job._id} className="bg-gray-800 p-5 rounded-2xl mb-4 hover:bg-gray-750 transition shadow-sm">
-                                <div className="flex justify-between mb-3 border-b border-gray-700 pb-3"><h3 className="font-bold">{job.clientName}</h3><div className="px-2 py-1 rounded bg-gray-700 text-[10px] uppercase font-bold">{job.status}</div></div>
+                            <div key={job._id} className="w-full bg-gray-800 p-5 rounded-2xl mb-4 hover:bg-gray-750 transition shadow-sm">
+                                <div className="flex justify-between mb-3 border-b border-gray-700 pb-3 w-full"><h3 className="font-bold">{job.clientName}</h3><div className="px-2 py-1 rounded bg-gray-700 text-[10px] uppercase font-bold">{job.status}</div></div>
                                 <button onClick={() => handleViewMap(job)} className="bg-gray-700 text-teal-400 px-3 py-1 rounded text-xs mb-4 font-bold shadow-sm flex items-center hover:bg-gray-600 transition"><i className="fas fa-map-marker-alt mr-2"></i> View Map</button>
-                                <div className="flex gap-2"><button onClick={() => openChat(job)} className="flex-1 py-2 bg-gray-700 text-xs font-bold rounded-lg hover:bg-gray-600 transition">Chat</button>{job.status === 'pending' && <button onClick={() => updateJobStatus(job._id, 'confirmed')} className="flex-1 py-2 bg-teal-600 text-xs font-bold rounded-lg hover:bg-teal-500 transition">Accept</button>}{job.status === 'confirmed' && <button onClick={() => updateJobStatus(job._id, 'completed')} className="flex-1 py-2 bg-blue-600 text-xs font-bold rounded-lg hover:bg-blue-500 transition">Complete</button>}</div>
+                                <div className="flex gap-2 w-full"><button onClick={() => openChat(job)} className="flex-1 py-2 bg-gray-700 text-xs font-bold rounded-lg hover:bg-gray-600 transition">Chat</button>{job.status === 'pending' && <button onClick={() => updateJobStatus(job._id, 'confirmed')} className="flex-1 py-2 bg-teal-600 text-xs font-bold rounded-lg hover:bg-teal-500 transition">Accept</button>}{job.status === 'confirmed' && <button onClick={() => updateJobStatus(job._id, 'completed')} className="flex-1 py-2 bg-blue-600 text-xs font-bold rounded-lg hover:bg-blue-500 transition">Complete</button>}</div>
                             </div>
                         ))}
-                        {paginatedJobs.length === 0 && <p className="text-center text-sm text-gray-500 py-8">No jobs found.</p>}
+                        {paginatedJobs.length === 0 && <p className="text-center text-sm text-gray-500 py-8 w-full">No jobs found.</p>}
                         <Pagination currentPage={jobPage} totalPages={totalJobPages} onPageChange={setJobPage} />
                     </div>
                 )}
                 
                 {activeTab === 'chat' && activeChatRoom && (
-                  <div className="w-full max-w-3xl flex-1 flex flex-col bg-gray-900 z-20 pb-20 relative">
-                    <div className="bg-gray-800 px-6 py-4 flex items-center justify-between shadow-sm sticky top-0 z-20"><div className="flex items-center"><button onClick={() => setActiveTab('jobs')} className="mr-4 text-gray-400 hover:text-white transition"><i className="fas fa-arrow-left"></i></button><div><h3 className="font-bold text-white text-sm">{activeChatRoom.clientName}</h3><p className="text-[10px] text-teal-400 font-bold">Job Chat</p></div></div><div className="flex gap-3"><button onClick={callLogic.startCall} className="w-8 h-8 bg-gray-700 text-teal-400 rounded-full flex items-center justify-center text-xs hover:bg-gray-600 transition"><i className="fas fa-video"></i></button></div></div>
-                    <div className="flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-4">{messageList.map((msg, i) => { const isMe = msg.senderId === user.id; return (<div key={i} className={`max-w-[75%] p-3 rounded-2xl text-sm shadow-sm ${isMe ? 'bg-teal-600 text-white self-end rounded-br-sm' : 'bg-gray-800 text-gray-200 self-start rounded-bl-sm'}`}><p>{msg.message}</p><div className="flex items-center justify-end mt-1 gap-1"><span className={`text-[9px] ${isMe ? 'text-teal-100' : 'text-gray-400'}`}>{msg.time}</span>{isMe && <span className={`text-[10px] ${msg.isRead ? 'text-blue-300' : 'text-teal-200'}`}>{msg.isRead ? '✓✓' : '✓'}</span>}</div></div>); })}<div ref={chatEndRef} /></div>
-                    <div className="absolute bottom-0 w-full bg-gray-800 py-4 px-6 border-t border-gray-700 flex items-center gap-2"><div className="relative"><button onClick={toggleLocationSharing} className={`w-10 h-10 rounded-full flex items-center justify-center transition hover:bg-gray-600 ${isSharingLocation ? 'bg-red-500/20 text-red-500' : 'bg-gray-700 text-gray-400'}`}><i className="fas fa-map-marker-alt"></i></button>{isSharingLocation && <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full animate-ping"></div>}</div><input type="text" placeholder="Type message..." value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} onKeyPress={e => e.key === 'Enter' && sendMessage()} className="flex-1 bg-gray-700 text-white py-3 px-4 rounded-full text-sm outline-none placeholder-gray-400 focus:ring-1 focus:ring-teal-500" /><button onClick={sendMessage} className="w-10 h-10 bg-teal-600 text-white rounded-full flex items-center justify-center shadow-md hover:bg-teal-500 transition"><i className="fas fa-paper-plane"></i></button></div>
+                  <div className="w-full flex-1 flex flex-col bg-gray-900 z-20 pb-20 relative">
+                    <div className="bg-gray-800 px-6 py-4 flex items-center justify-between shadow-sm sticky top-0 z-20 w-full"><div className="flex items-center"><button onClick={() => setActiveTab('jobs')} className="mr-4 text-gray-400 hover:text-white transition"><i className="fas fa-arrow-left"></i></button><div><h3 className="font-bold text-white text-sm">{activeChatRoom.clientName}</h3><p className="text-[10px] text-teal-400 font-bold">Job Chat</p></div></div><div className="flex gap-3"><button onClick={callLogic.startCall} className="w-8 h-8 bg-gray-700 text-teal-400 rounded-full flex items-center justify-center text-xs hover:bg-gray-600 transition"><i className="fas fa-video"></i></button></div></div>
+                    <div className="w-full flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-4">{messageList.map((msg, i) => { const isMe = msg.senderId === user.id; return (<div key={i} className={`max-w-[75%] p-3 rounded-2xl text-sm shadow-sm ${isMe ? 'bg-teal-600 text-white self-end rounded-br-sm' : 'bg-gray-800 text-gray-200 self-start rounded-bl-sm'}`}><p>{msg.message}</p><div className="flex items-center justify-end mt-1 gap-1"><span className={`text-[9px] ${isMe ? 'text-teal-100' : 'text-gray-400'}`}>{msg.time}</span>{isMe && <span className={`text-[10px] ${msg.isRead ? 'text-blue-300' : 'text-teal-200'}`}>{msg.isRead ? '✓✓' : '✓'}</span>}</div></div>); })}<div ref={chatEndRef} /></div>
+                    <div className="absolute bottom-0 w-full bg-gray-800 py-4 px-6 border-t border-gray-700 flex items-center gap-2"><div className="relative flex-shrink-0"><button onClick={toggleLocationSharing} className={`w-10 h-10 rounded-full flex items-center justify-center transition hover:bg-gray-600 ${isSharingLocation ? 'bg-red-500/20 text-red-500' : 'bg-gray-700 text-gray-400'}`}><i className="fas fa-map-marker-alt"></i></button>{isSharingLocation && <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full animate-ping"></div>}</div><input type="text" placeholder="Type message..." value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} onKeyPress={e => e.key === 'Enter' && sendMessage()} className="w-full flex-1 bg-gray-700 text-white py-3 px-4 rounded-full text-sm outline-none placeholder-gray-400 focus:ring-1 focus:ring-teal-500" /><button onClick={sendMessage} className="flex-shrink-0 w-10 h-10 bg-teal-600 text-white rounded-full flex items-center justify-center shadow-md hover:bg-teal-500 transition"><i className="fas fa-paper-plane"></i></button></div>
                   </div>
                 )}
 
                 {activeTab === 'chat' && !activeChatRoom && (
-                    <div className="w-full max-w-3xl flex-1 flex flex-col items-center justify-center text-gray-500 pb-28 px-6">
+                    <div className="w-full flex-1 flex flex-col items-center justify-center text-gray-500 pb-28 px-6">
                         <div className="w-20 h-20 bg-gray-800 rounded-full flex items-center justify-center mb-4"><i className="fas fa-comments text-3xl opacity-50 text-teal-500"></i></div>
                         <h3 className="font-bold text-gray-400">No Chat Selected</h3>
                         <p className="text-xs mt-1 text-gray-500 text-center">Open a job to start chatting.</p>
@@ -790,9 +782,9 @@ const ProfessionalApp = ({ socket, token }) => {
                 )}
                 
                 {activeTab === 'profile' && (
-                    <div className="w-full max-w-3xl px-6 pt-10 pb-28 flex flex-col">
-                        <h2 className="text-2xl font-bold mb-6">Pro Dashboard</h2>
-                        {isEditingProfile ? (<form onSubmit={handleSaveProfile} className="bg-gray-800 p-6 rounded-3xl mb-6 shadow-md"><h3 className="font-bold mb-4 text-teal-400 border-b border-gray-700 pb-2">Edit Public Profile</h3><div className="mb-4"><label className="text-xs text-gray-400 font-bold">Headline (e.g., Expert Electrician)</label><input type="text" value={editForm.headline || ''} onChange={e => setEditForm({...editForm, headline: e.target.value})} className="w-full bg-gray-700 border-none p-3 rounded-xl mt-1 text-sm text-white outline-none focus:ring-1 focus:ring-teal-500" /></div><div className="mb-4"><label className="text-xs text-gray-400 font-bold">Category</label><select value={editForm.category || ''} onChange={e => setEditForm({...editForm, category: e.target.value})} className="w-full bg-gray-700 border-none p-3 rounded-xl mt-1 text-sm text-white outline-none"><option value="cleaning">Cleaning</option><option value="electric">Electric</option><option value="plumbing">Plumbing</option><option value="ac">AC Repair</option><option value="tech">Tech & IT</option></select></div><div className="mb-6"><label className="text-xs text-gray-400 font-bold">Hourly Rate (₦)</label><input type="number" value={editForm.price || ''} onChange={e => setEditForm({...editForm, price: e.target.value})} className="w-full bg-gray-700 border-none p-3 rounded-xl mt-1 text-sm text-white outline-none focus:ring-1 focus:ring-teal-500" /></div><div className="flex gap-3"><button type="button" onClick={() => setIsEditingProfile(false)} className="flex-1 py-3 bg-gray-700 text-white rounded-xl font-bold text-sm hover:bg-gray-600 transition">Cancel</button><button type="submit" disabled={isSaving} className="flex-1 py-3 bg-teal-600 text-white rounded-xl font-bold text-sm shadow-lg hover:bg-teal-500 transition">{isSaving ? 'Saving...' : 'Save Profile'}</button></div></form>) : myProfile && (<div className="bg-gray-800 p-6 rounded-3xl flex flex-col items-center mb-6 text-center mt-auto shadow-md"><img src={myProfile.avatar || `https://ui-avatars.com/api/?name=${myProfile.name.replace(/ /g,'+')}&background=0D8ABC&color=fff`} className="w-20 h-20 rounded-full object-cover mb-4 ring-2 ring-teal-500 ring-offset-2 ring-offset-gray-800" alt="Avatar" /><h3 className="text-xl font-bold">{myProfile.name}</h3><p className="text-teal-400 text-sm font-bold mb-3">{myProfile.headline || myProfile.title}</p><div className="flex gap-4 text-xs font-bold text-gray-400 mb-6"><span className="bg-gray-700 px-3 py-1 rounded-lg">₦{myProfile.price}/hr</span><span className="bg-gray-700 px-3 py-1 rounded-lg"><i className="fas fa-star text-orange-400 mr-1"></i> {myProfile.rating}</span></div><button onClick={() => setIsEditingProfile(true)} className="w-full py-3 bg-gray-700 text-white rounded-xl font-bold text-sm border border-gray-600 mb-3 hover:bg-gray-600 transition"><i className="fas fa-edit mr-2"></i> Edit Profile</button><button onClick={logout} className="w-full py-3 bg-red-500/10 text-red-500 font-bold rounded-xl border border-red-500/20 hover:bg-red-500/20 transition"><i className="fas fa-sign-out-alt mr-2"></i> Log Out</button></div>)}
+                    <div className="w-full px-6 pt-10 pb-28 flex flex-col">
+                        <h2 className="text-2xl font-bold mb-6 w-full">Pro Dashboard</h2>
+                        {isEditingProfile ? (<form onSubmit={handleSaveProfile} className="w-full bg-gray-800 p-6 rounded-3xl mb-6 shadow-md"><h3 className="font-bold mb-4 text-teal-400 border-b border-gray-700 pb-2">Edit Public Profile</h3><div className="mb-4 w-full"><label className="text-xs text-gray-400 font-bold">Headline (e.g., Expert Electrician)</label><input type="text" value={editForm.headline || ''} onChange={e => setEditForm({...editForm, headline: e.target.value})} className="w-full bg-gray-700 border-none p-3 rounded-xl mt-1 text-sm text-white outline-none focus:ring-1 focus:ring-teal-500" /></div><div className="mb-4 w-full"><label className="text-xs text-gray-400 font-bold">Category</label><select value={editForm.category || ''} onChange={e => setEditForm({...editForm, category: e.target.value})} className="w-full bg-gray-700 border-none p-3 rounded-xl mt-1 text-sm text-white outline-none"><option value="cleaning">Cleaning</option><option value="electric">Electric</option><option value="plumbing">Plumbing</option><option value="ac">AC Repair</option><option value="tech">Tech & IT</option></select></div><div className="mb-6 w-full"><label className="text-xs text-gray-400 font-bold">Hourly Rate (₦)</label><input type="number" value={editForm.price || ''} onChange={e => setEditForm({...editForm, price: e.target.value})} className="w-full bg-gray-700 border-none p-3 rounded-xl mt-1 text-sm text-white outline-none focus:ring-1 focus:ring-teal-500" /></div><div className="flex gap-3 w-full"><button type="button" onClick={() => setIsEditingProfile(false)} className="flex-1 py-3 bg-gray-700 text-white rounded-xl font-bold text-sm hover:bg-gray-600 transition">Cancel</button><button type="submit" disabled={isSaving} className="flex-1 py-3 bg-teal-600 text-white rounded-xl font-bold text-sm shadow-lg hover:bg-teal-500 transition">{isSaving ? 'Saving...' : 'Save Profile'}</button></div></form>) : myProfile && (<div className="w-full bg-gray-800 p-6 rounded-3xl flex flex-col items-center mb-6 text-center mt-auto shadow-md"><img src={myProfile.avatar || `https://ui-avatars.com/api/?name=${myProfile.name.replace(/ /g,'+')}&background=0D8ABC&color=fff`} className="w-20 h-20 rounded-full object-cover mb-4 ring-2 ring-teal-500 ring-offset-2 ring-offset-gray-800" alt="Avatar" /><h3 className="text-xl font-bold">{myProfile.name}</h3><p className="text-teal-400 text-sm font-bold mb-3">{myProfile.headline || myProfile.title}</p><div className="flex gap-4 text-xs font-bold text-gray-400 mb-6"><span className="bg-gray-700 px-3 py-1 rounded-lg">₦{myProfile.price}/hr</span><span className="bg-gray-700 px-3 py-1 rounded-lg"><i className="fas fa-star text-orange-400 mr-1"></i> {myProfile.rating}</span></div><button onClick={() => setIsEditingProfile(true)} className="w-full py-3 bg-gray-700 text-white rounded-xl font-bold text-sm border border-gray-600 mb-3 hover:bg-gray-600 transition"><i className="fas fa-edit mr-2"></i> Edit Profile</button><button onClick={logout} className="w-full py-3 bg-red-500/10 text-red-500 font-bold rounded-xl border border-red-500/20 hover:bg-red-500/20 transition"><i className="fas fa-sign-out-alt mr-2"></i> Log Out</button></div>)}
                     </div>
                 )}
             </div>
@@ -800,14 +792,14 @@ const ProfessionalApp = ({ socket, token }) => {
             {/* OVERLAYS (MAP) */}
             {viewingMapForJob && (
               <div className="absolute inset-0 w-full h-screen bg-gray-900 z-50 flex flex-col animate-[slideUp_0.3s_ease-out]">
-                  <div className="bg-gray-800 px-6 py-4 flex items-center shadow-sm z-10 relative">
+                  <div className="w-full bg-gray-800 px-6 py-4 flex items-center shadow-sm z-10 relative">
                       <button onClick={() => setViewingMapForJob(null)} className="mr-4 text-gray-400 hover:text-white transition"><i className="fas fa-arrow-left"></i></button>
                       <div>
                           <h3 className="font-bold text-white text-sm">Navigation</h3>
                           <p className="text-[10px] text-gray-400 truncate max-w-[200px]">{viewingMapForJob.address}</p>
                       </div>
                   </div>
-                  <div className="flex-1 relative z-0 w-full h-full">
+                  <div className="w-full flex-1 relative z-0 h-full">
                       <MapContainer center={proMapCenter} zoom={15} style={{ height: '100%', width: '100%', zIndex: 0 }}>
                           <LiveMapUpdater center={proMapCenter} />
                           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
@@ -820,12 +812,10 @@ const ProfessionalApp = ({ socket, token }) => {
               </div>
             )}
             
-            {/* BOTTOM NAV BAR */}
-            <div className="absolute bottom-0 w-full bg-gray-800 border-t border-gray-700 flex justify-center z-10">
-                <div className="w-full max-w-3xl flex justify-around py-4 px-6 pb-safe">
-                    <button onClick={() => setActiveTab('jobs')} className={`flex flex-col items-center transition hover:scale-110 ${activeTab === 'jobs' ? 'text-teal-400 scale-110' : 'text-gray-500'}`}><i className="fas fa-briefcase text-xl mb-1"></i><span className="text-[9px] font-bold">Jobs</span></button>
-                    <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center transition hover:scale-110 ${activeTab === 'profile' ? 'text-teal-400 scale-110' : 'text-gray-500'}`}><i className="fas fa-user-cog text-xl mb-1"></i><span className="text-[9px] font-bold">Profile</span></button>
-                </div>
+            {/* FULL WIDTH BOTTOM NAV BAR */}
+            <div className="absolute bottom-0 w-full bg-gray-800 border-t border-gray-700 flex justify-around py-4 px-6 pb-6 z-10">
+                <button onClick={() => setActiveTab('jobs')} className={`flex flex-col items-center transition hover:scale-110 ${activeTab === 'jobs' ? 'text-teal-400 scale-110' : 'text-gray-500'}`}><i className="fas fa-briefcase text-xl mb-1"></i><span className="text-[9px] font-bold">Jobs</span></button>
+                <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center transition hover:scale-110 ${activeTab === 'profile' ? 'text-teal-400 scale-110' : 'text-gray-500'}`}><i className="fas fa-user-cog text-xl mb-1"></i><span className="text-[9px] font-bold">Profile</span></button>
             </div>
         </div>
     );
