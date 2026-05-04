@@ -17,7 +17,7 @@ const backendUrl = rawUrl.replace(/\/$/, "");
 const Pagination = ({ currentPage, totalPages, onPageChange }) => {
     if (totalPages <= 1) return null;
     return (
-        <div className="flex justify-between items-center mt-6 mb-2 pb-4">
+        <div className="flex justify-between items-center mt-auto pt-6 mb-2">
             <button disabled={currentPage === 1} onClick={() => onPageChange(currentPage - 1)} className="px-4 py-2 bg-gray-100 text-gray-600 rounded-xl disabled:opacity-30 font-bold text-xs transition active:scale-95 shadow-sm"><i className="fas fa-chevron-left mr-1"></i> Prev</button>
             <span className="text-xs font-bold text-gray-400 bg-gray-50 px-3 py-1.5 rounded-lg">Page {currentPage} of {totalPages}</span>
             <button disabled={currentPage === totalPages} onClick={() => onPageChange(currentPage + 1)} className="px-4 py-2 bg-gray-100 text-gray-600 rounded-xl disabled:opacity-30 font-bold text-xs transition active:scale-95 shadow-sm">Next <i className="fas fa-chevron-right ml-1"></i></button>
@@ -202,7 +202,6 @@ const ClientApp = ({ socket, token }) => {
   const [professionals, setProfessionals] = useState([]);
   const [myBookings, setMyBookings] = useState([]);
   
-  // PAGINATION STATES
   const [proPage, setProPage] = useState(1);
   const [bookingPage, setBookingPage] = useState(1);
   const ITEMS_PER_PAGE = 4;
@@ -233,7 +232,6 @@ const ClientApp = ({ socket, token }) => {
   
   const callLogic = useVideoCall(socket, activeChatRoom, user);
 
-  // RESET PAGINATION ON SEARCH OR FILTER
   useEffect(() => { setProPage(1); }, [searchQuery, selectedCategory, activeTab]);
 
   useEffect(() => {
@@ -387,14 +385,12 @@ const ClientApp = ({ socket, token }) => {
 
   const categories = [ { id: 'cleaning', name: 'Cleaning', icon: 'fa-broom', bg: 'bg-blue-50', color: 'text-blue-500' }, { id: 'electric', name: 'Electric', icon: 'fa-bolt', bg: 'bg-orange-50', color: 'text-orange-500' }, { id: 'plumbing', name: 'Plumbing', icon: 'fa-wrench', bg: 'bg-teal-50', color: 'text-teal-600' }, { id: 'tech', name: 'Tech & IT', icon: 'fa-laptop-code', bg: 'bg-purple-50', color: 'text-purple-500' } ];
   
-  // FILTERING LOGIC
   let displayedPros = []; 
   if (activeTab === 'favorites') { displayedPros = professionals.filter(p => favorites.includes(p._id)); } 
   else { displayedPros = selectedCategory ? professionals.filter(p => p.category === selectedCategory) : professionals; }
   
   const filteredPros = displayedPros.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
   
-  // PAGINATION CALCULATIONS
   const totalProPages = Math.ceil(filteredPros.length / ITEMS_PER_PAGE);
   const paginatedPros = filteredPros.slice((proPage - 1) * ITEMS_PER_PAGE, proPage * ITEMS_PER_PAGE);
 
@@ -435,9 +431,11 @@ const ClientApp = ({ socket, token }) => {
         </div>
       </div>
       
-      <div className="flex-1 overflow-y-auto pb-28 hide-scrollbar">
+      {/* WRAPPER NOW USES flex-col TO STRETCH ALL CONTENT TO BOTTOM */}
+      <div className="flex-1 overflow-y-auto hide-scrollbar flex flex-col relative">
+        
         {activeTab === 'home' && (
-          <div className="px-6 pt-6">
+          <div className="px-6 pt-6 pb-28 flex-1 flex flex-col">
             <div className="relative mb-6 shadow-sm"><i className="fas fa-search absolute left-4 top-3.5 text-gray-400"></i><input type="text" placeholder="Search services..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white py-3.5 pl-12 pr-4 rounded-2xl text-sm outline-none border border-gray-100" /></div>
             <div className="flex justify-between items-end mb-4"><h2 className="text-lg font-bold text-gray-800">Categories</h2></div>
             <div className="grid grid-cols-4 gap-3 mb-8">{categories.map(cat => (<div key={cat.id} onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)} className={`flex flex-col items-center justify-center p-3 rounded-2xl cursor-pointer transition ${selectedCategory === cat.id ? 'bg-primary text-white shadow-md' : `${cat.bg} ${cat.color}`}`}><i className={`fas ${cat.icon} text-xl mb-2`}></i><span className={`text-[10px] font-bold ${selectedCategory === cat.id ? 'text-white' : 'text-gray-600'}`}>{cat.name}</span></div>))}</div>
@@ -458,7 +456,7 @@ const ClientApp = ({ socket, token }) => {
         )}
 
         {activeTab === 'bookings' && (
-          <div className="px-6 pt-6">
+          <div className="px-6 pt-6 pb-28 flex-1 flex flex-col">
             <h2 className="text-2xl font-bold mb-6">My Bookings</h2>
             {paginatedBookings.map(b => (
                 <div key={b._id} className="bg-white p-4 rounded-2xl mb-4 shadow-sm border border-gray-100">
@@ -472,9 +470,9 @@ const ClientApp = ({ socket, token }) => {
         )}
 
         {activeTab === 'chat' && activeChatRoom && (
-          <div className="h-full flex flex-col bg-gray-50 relative">
+          <div className="flex-1 flex flex-col bg-gray-50 relative pb-20">
             <div className="bg-white px-6 py-4 flex items-center justify-between shadow-sm sticky top-0 z-20"><div className="flex items-center"><button onClick={() => setActiveTab('bookings')} className="mr-4 text-gray-400"><i className="fas fa-arrow-left"></i></button><div><h3 className="font-bold text-gray-800 text-sm">{activeChatRoom.professionalName}</h3><p className="text-[10px] text-teal-600 font-bold">Booking Chat</p></div></div><div className="flex gap-3"><button onClick={callLogic.startCall} className="w-8 h-8 bg-teal-50 text-teal-600 rounded-full flex items-center justify-center text-xs"><i className="fas fa-video"></i></button></div></div>
-            <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4 pb-20">{messageList.map((msg, i) => { const isMe = msg.senderId === user.id; return (<div key={i} className={`max-w-[75%] p-3 rounded-2xl text-sm shadow-sm ${isMe ? 'bg-primary text-white self-end rounded-br-sm' : 'bg-white text-gray-800 self-start rounded-bl-sm border border-gray-100'}`}><p>{msg.message}</p><div className="flex items-center justify-end mt-1 gap-1"><span className={`text-[9px] ${isMe ? 'text-teal-100' : 'text-gray-400'}`}>{msg.time}</span>{isMe && <span className={`text-[10px] ${msg.isRead ? 'text-blue-300' : 'text-teal-200'}`}>{msg.isRead ? '✓✓' : '✓'}</span>}</div></div>); })}<div ref={chatEndRef} /></div>
+            <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">{messageList.map((msg, i) => { const isMe = msg.senderId === user.id; return (<div key={i} className={`max-w-[75%] p-3 rounded-2xl text-sm shadow-sm ${isMe ? 'bg-primary text-white self-end rounded-br-sm' : 'bg-white text-gray-800 self-start rounded-bl-sm border border-gray-100'}`}><p>{msg.message}</p><div className="flex items-center justify-end mt-1 gap-1"><span className={`text-[9px] ${isMe ? 'text-teal-100' : 'text-gray-400'}`}>{msg.time}</span>{isMe && <span className={`text-[10px] ${msg.isRead ? 'text-blue-300' : 'text-teal-200'}`}>{msg.isRead ? '✓✓' : '✓'}</span>}</div></div>); })}<div ref={chatEndRef} /></div>
             
             <div className="absolute bottom-0 w-full bg-white p-4 border-t border-gray-100 flex items-center gap-2">
                 <div className="relative">
@@ -506,8 +504,22 @@ const ClientApp = ({ socket, token }) => {
           </div>
         )}
 
+        {/* NO CHAT SELECTED PLACEHOLDER */}
+        {activeTab === 'chat' && !activeChatRoom && (
+            <div className="flex-1 flex flex-col items-center justify-center text-gray-400 pb-28">
+                <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4"><i className="fas fa-comments text-3xl opacity-50"></i></div>
+                <h3 className="font-bold text-gray-600">No Chat Selected</h3>
+                <p className="text-xs mt-1">Open a booking to start chatting.</p>
+                <button onClick={() => setActiveTab('bookings')} className="mt-6 px-6 py-2 bg-teal-50 text-teal-600 rounded-xl font-bold text-xs">Go to Bookings</button>
+            </div>
+        )}
+
         {activeTab === 'profile' && (
-          <div className="px-6 pt-6"><h2 className="text-2xl font-bold mb-6">Profile</h2><div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center mb-6"><input type="file" accept="image/*" className="hidden" ref={avatarInputRef} onChange={handleAvatarUpload}/><div className="relative mb-4"><img src={user.avatar || `https://ui-avatars.com/api/?name=${user.name.replace(/ /g,'+')}&background=0D8ABC&color=fff`} className="w-24 h-24 rounded-full object-cover shadow-md" alt="Avatar" /><button onClick={() => avatarInputRef.current.click()} className="absolute bottom-0 right-0 w-8 h-8 bg-teal-500 text-white rounded-full flex items-center justify-center border-2 border-white shadow-sm"><i className="fas fa-camera text-xs"></i></button></div><h3 className="text-xl font-bold text-gray-800">{user.name}</h3><p className="text-sm text-gray-500">{user.email}</p></div><button onClick={logout} className="w-full py-4 bg-red-50 text-red-500 font-bold rounded-2xl border border-red-100 flex items-center justify-center"><i className="fas fa-sign-out-alt mr-2"></i> Log Out</button></div>
+          <div className="px-6 pt-6 pb-28 flex-1 flex flex-col">
+              <h2 className="text-2xl font-bold mb-6">Profile</h2>
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center mb-6"><input type="file" accept="image/*" className="hidden" ref={avatarInputRef} onChange={handleAvatarUpload}/><div className="relative mb-4"><img src={user.avatar || `https://ui-avatars.com/api/?name=${user.name.replace(/ /g,'+')}&background=0D8ABC&color=fff`} className="w-24 h-24 rounded-full object-cover shadow-md" alt="Avatar" /><button onClick={() => avatarInputRef.current.click()} className="absolute bottom-0 right-0 w-8 h-8 bg-teal-500 text-white rounded-full flex items-center justify-center border-2 border-white shadow-sm"><i className="fas fa-camera text-xs"></i></button></div><h3 className="text-xl font-bold text-gray-800">{user.name}</h3><p className="text-sm text-gray-500">{user.email}</p></div>
+              <button onClick={logout} className="w-full py-4 bg-red-50 text-red-500 font-bold rounded-2xl border border-red-100 flex items-center justify-center"><i className="fas fa-sign-out-alt mr-2"></i> Log Out</button>
+          </div>
         )}
       </div>
 
@@ -529,7 +541,6 @@ const ProfessionalApp = ({ socket, token }) => {
     const [activeTab, setActiveTab] = useState('jobs'); 
     const [jobs, setJobs] = useState([]); 
     
-    // PAGINATION
     const [jobPage, setJobPage] = useState(1);
     const ITEMS_PER_PAGE = 4;
 
@@ -552,7 +563,6 @@ const ProfessionalApp = ({ socket, token }) => {
     const [editForm, setEditForm] = useState({}); 
     const [isSaving, setIsSaving] = useState(false);
 
-    // GUARANTEE ROOM JOINING
     useEffect(() => {
         if (socket && activeChatRoom) {
             socket.emit('join_room', activeChatRoom._id);
@@ -648,7 +658,6 @@ const ProfessionalApp = ({ socket, token }) => {
     
     const proMapCenter = myLocation ? [myLocation.lat, myLocation.lng] : mapPosition;
     
-    // PAGINATION CALCULATION
     const totalJobPages = Math.ceil(jobs.length / ITEMS_PER_PAGE);
     const paginatedJobs = jobs.slice((jobPage - 1) * ITEMS_PER_PAGE, jobPage * ITEMS_PER_PAGE);
 
@@ -656,24 +665,49 @@ const ProfessionalApp = ({ socket, token }) => {
         <div className="bg-gray-900 w-full max-w-md mx-auto h-screen md:h-[850px] relative flex flex-col text-white md:rounded-[2.5rem] md:shadow-2xl overflow-hidden">
             <CallUI {...callLogic} />
             
-            {activeTab === 'jobs' && (
-                <div className="flex-1 overflow-y-auto px-6 pt-10 pb-28">
-                    <h2 className="text-2xl font-bold mb-6">My Jobs</h2>
-                    {paginatedJobs.map(job => (
-                        <div key={job._id} className="bg-gray-800 p-5 rounded-2xl mb-4">
-                            <div className="flex justify-between mb-3 border-b border-gray-700 pb-3"><h3 className="font-bold">{job.clientName}</h3><div className="px-2 py-1 rounded bg-gray-700 text-[10px] uppercase font-bold">{job.status}</div></div>
-                            <button onClick={() => handleViewMap(job)} className="bg-gray-700 text-teal-400 px-3 py-1 rounded text-xs mb-4 font-bold shadow-sm flex items-center"><i className="fas fa-map-marker-alt mr-2"></i> View Map</button>
-                            <div className="flex gap-2"><button onClick={() => openChat(job)} className="flex-1 py-2 bg-gray-700 text-xs font-bold rounded-lg">Chat</button>{job.status === 'pending' && <button onClick={() => updateJobStatus(job._id, 'confirmed')} className="flex-1 py-2 bg-teal-600 text-xs font-bold rounded-lg">Accept</button>}{job.status === 'confirmed' && <button onClick={() => updateJobStatus(job._id, 'completed')} className="flex-1 py-2 bg-blue-600 text-xs font-bold rounded-lg">Complete</button>}</div>
-                        </div>
-                    ))}
-                    {paginatedJobs.length === 0 && <p className="text-center text-sm text-gray-500 py-8">No jobs found.</p>}
-                    <Pagination currentPage={jobPage} totalPages={totalJobPages} onPageChange={setJobPage} />
-                </div>
-            )}
-            
-            {activeTab === 'chat' && activeChatRoom && (<div className="flex-1 flex flex-col bg-gray-900 z-20"><div className="bg-gray-800 px-6 py-4 flex items-center justify-between shadow-sm sticky top-0 z-20"><div className="flex items-center"><button onClick={() => setActiveTab('jobs')} className="mr-4 text-gray-400"><i className="fas fa-arrow-left"></i></button><div><h3 className="font-bold text-white text-sm">{activeChatRoom.clientName}</h3><p className="text-[10px] text-teal-400 font-bold">Job Chat</p></div></div><div className="flex gap-3"><button onClick={callLogic.startCall} className="w-8 h-8 bg-gray-700 text-teal-400 rounded-full flex items-center justify-center text-xs"><i className="fas fa-video"></i></button></div></div><div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4 pb-20">{messageList.map((msg, i) => { const isMe = msg.senderId === user.id; return (<div key={i} className={`max-w-[75%] p-3 rounded-2xl text-sm shadow-sm ${isMe ? 'bg-teal-600 text-white self-end rounded-br-sm' : 'bg-gray-800 text-gray-200 self-start rounded-bl-sm'}`}><p>{msg.message}</p><div className="flex items-center justify-end mt-1 gap-1"><span className={`text-[9px] ${isMe ? 'text-teal-100' : 'text-gray-400'}`}>{msg.time}</span>{isMe && <span className={`text-[10px] ${msg.isRead ? 'text-blue-300' : 'text-teal-200'}`}>{msg.isRead ? '✓✓' : '✓'}</span>}</div></div>); })}<div ref={chatEndRef} /></div><div className="absolute bottom-0 w-full bg-gray-800 p-4 border-t border-gray-700 flex items-center gap-2"><div className="relative"><button onClick={toggleLocationSharing} className={`w-10 h-10 rounded-full flex items-center justify-center transition ${isSharingLocation ? 'bg-red-500/20 text-red-500' : 'bg-gray-700 text-gray-400'}`}><i className="fas fa-map-marker-alt"></i></button>{isSharingLocation && <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full animate-ping"></div>}</div><input type="text" placeholder="Type message..." value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} onKeyPress={e => e.key === 'Enter' && sendMessage()} className="flex-1 bg-gray-700 text-white py-3 px-4 rounded-full text-sm outline-none placeholder-gray-400" /><button onClick={sendMessage} className="w-10 h-10 bg-teal-600 text-white rounded-full flex items-center justify-center shadow-md"><i className="fas fa-paper-plane"></i></button></div></div>)}
-            
-            {activeTab === 'profile' && (<div className="flex-1 overflow-y-auto px-6 pt-10 pb-28"><h2 className="text-2xl font-bold mb-6">Pro Dashboard</h2>{isEditingProfile ? (<form onSubmit={handleSaveProfile} className="bg-gray-800 p-6 rounded-3xl mb-6"><h3 className="font-bold mb-4 text-teal-400 border-b border-gray-700 pb-2">Edit Public Profile</h3><div className="mb-4"><label className="text-xs text-gray-400 font-bold">Headline (e.g., Expert Electrician)</label><input type="text" value={editForm.headline || ''} onChange={e => setEditForm({...editForm, headline: e.target.value})} className="w-full bg-gray-700 border-none p-3 rounded-xl mt-1 text-sm text-white outline-none focus:ring-1 focus:ring-teal-500" /></div><div className="mb-4"><label className="text-xs text-gray-400 font-bold">Category</label><select value={editForm.category || ''} onChange={e => setEditForm({...editForm, category: e.target.value})} className="w-full bg-gray-700 border-none p-3 rounded-xl mt-1 text-sm text-white outline-none"><option value="cleaning">Cleaning</option><option value="electric">Electric</option><option value="plumbing">Plumbing</option><option value="ac">AC Repair</option><option value="tech">Tech & IT</option></select></div><div className="mb-6"><label className="text-xs text-gray-400 font-bold">Hourly Rate (₦)</label><input type="number" value={editForm.price || ''} onChange={e => setEditForm({...editForm, price: e.target.value})} className="w-full bg-gray-700 border-none p-3 rounded-xl mt-1 text-sm text-white outline-none focus:ring-1 focus:ring-teal-500" /></div><div className="flex gap-3"><button type="button" onClick={() => setIsEditingProfile(false)} className="flex-1 py-3 bg-gray-700 text-white rounded-xl font-bold text-sm">Cancel</button><button type="submit" disabled={isSaving} className="flex-1 py-3 bg-teal-600 text-white rounded-xl font-bold text-sm shadow-lg">{isSaving ? 'Saving...' : 'Save Profile'}</button></div></form>) : myProfile && (<div className="bg-gray-800 p-6 rounded-3xl flex flex-col items-center mb-6 text-center"><img src={myProfile.avatar || `https://ui-avatars.com/api/?name=${myProfile.name.replace(/ /g,'+')}&background=0D8ABC&color=fff`} className="w-20 h-20 rounded-full object-cover mb-4 ring-2 ring-teal-500 ring-offset-2 ring-offset-gray-800" alt="Avatar" /><h3 className="text-xl font-bold">{myProfile.name}</h3><p className="text-teal-400 text-sm font-bold mb-3">{myProfile.headline || myProfile.title}</p><div className="flex gap-4 text-xs font-bold text-gray-400 mb-6"><span className="bg-gray-700 px-3 py-1 rounded-lg">₦{myProfile.price}/hr</span><span className="bg-gray-700 px-3 py-1 rounded-lg"><i className="fas fa-star text-orange-400 mr-1"></i> {myProfile.rating}</span></div><button onClick={() => setIsEditingProfile(true)} className="w-full py-3 bg-gray-700 text-white rounded-xl font-bold text-sm border border-gray-600 mb-3"><i className="fas fa-edit mr-2"></i> Edit Profile</button><button onClick={logout} className="w-full py-3 bg-red-500/10 text-red-500 font-bold rounded-xl border border-red-500/20"><i className="fas fa-sign-out-alt mr-2"></i> Log Out</button></div>)}</div>)}
+            {/* WRAPPER NOW STRETCHES CONTENT */}
+            <div className="flex-1 overflow-y-auto hide-scrollbar flex flex-col relative">
+                
+                {activeTab === 'jobs' && (
+                    <div className="px-6 pt-10 pb-28 flex-1 flex flex-col">
+                        <h2 className="text-2xl font-bold mb-6">My Jobs</h2>
+                        {paginatedJobs.map(job => (
+                            <div key={job._id} className="bg-gray-800 p-5 rounded-2xl mb-4">
+                                <div className="flex justify-between mb-3 border-b border-gray-700 pb-3"><h3 className="font-bold">{job.clientName}</h3><div className="px-2 py-1 rounded bg-gray-700 text-[10px] uppercase font-bold">{job.status}</div></div>
+                                <button onClick={() => handleViewMap(job)} className="bg-gray-700 text-teal-400 px-3 py-1 rounded text-xs mb-4 font-bold shadow-sm flex items-center"><i className="fas fa-map-marker-alt mr-2"></i> View Map</button>
+                                <div className="flex gap-2"><button onClick={() => openChat(job)} className="flex-1 py-2 bg-gray-700 text-xs font-bold rounded-lg">Chat</button>{job.status === 'pending' && <button onClick={() => updateJobStatus(job._id, 'confirmed')} className="flex-1 py-2 bg-teal-600 text-xs font-bold rounded-lg">Accept</button>}{job.status === 'confirmed' && <button onClick={() => updateJobStatus(job._id, 'completed')} className="flex-1 py-2 bg-blue-600 text-xs font-bold rounded-lg">Complete</button>}</div>
+                            </div>
+                        ))}
+                        {paginatedJobs.length === 0 && <p className="text-center text-sm text-gray-500 py-8">No jobs found.</p>}
+                        <Pagination currentPage={jobPage} totalPages={totalJobPages} onPageChange={setJobPage} />
+                    </div>
+                )}
+                
+                {activeTab === 'chat' && activeChatRoom && (
+                  <div className="flex-1 flex flex-col bg-gray-900 z-20 pb-20">
+                    <div className="bg-gray-800 px-6 py-4 flex items-center justify-between shadow-sm sticky top-0 z-20"><div className="flex items-center"><button onClick={() => setActiveTab('jobs')} className="mr-4 text-gray-400"><i className="fas fa-arrow-left"></i></button><div><h3 className="font-bold text-white text-sm">{activeChatRoom.clientName}</h3><p className="text-[10px] text-teal-400 font-bold">Job Chat</p></div></div><div className="flex gap-3"><button onClick={callLogic.startCall} className="w-8 h-8 bg-gray-700 text-teal-400 rounded-full flex items-center justify-center text-xs"><i className="fas fa-video"></i></button></div></div>
+                    <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">{messageList.map((msg, i) => { const isMe = msg.senderId === user.id; return (<div key={i} className={`max-w-[75%] p-3 rounded-2xl text-sm shadow-sm ${isMe ? 'bg-teal-600 text-white self-end rounded-br-sm' : 'bg-gray-800 text-gray-200 self-start rounded-bl-sm'}`}><p>{msg.message}</p><div className="flex items-center justify-end mt-1 gap-1"><span className={`text-[9px] ${isMe ? 'text-teal-100' : 'text-gray-400'}`}>{msg.time}</span>{isMe && <span className={`text-[10px] ${msg.isRead ? 'text-blue-300' : 'text-teal-200'}`}>{msg.isRead ? '✓✓' : '✓'}</span>}</div></div>); })}<div ref={chatEndRef} /></div>
+                    <div className="absolute bottom-0 w-full bg-gray-800 p-4 border-t border-gray-700 flex items-center gap-2"><div className="relative"><button onClick={toggleLocationSharing} className={`w-10 h-10 rounded-full flex items-center justify-center transition ${isSharingLocation ? 'bg-red-500/20 text-red-500' : 'bg-gray-700 text-gray-400'}`}><i className="fas fa-map-marker-alt"></i></button>{isSharingLocation && <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full animate-ping"></div>}</div><input type="text" placeholder="Type message..." value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} onKeyPress={e => e.key === 'Enter' && sendMessage()} className="flex-1 bg-gray-700 text-white py-3 px-4 rounded-full text-sm outline-none placeholder-gray-400" /><button onClick={sendMessage} className="w-10 h-10 bg-teal-600 text-white rounded-full flex items-center justify-center shadow-md"><i className="fas fa-paper-plane"></i></button></div>
+                  </div>
+                )}
+
+                {/* NO CHAT SELECTED PLACEHOLDER */}
+                {activeTab === 'chat' && !activeChatRoom && (
+                    <div className="flex-1 flex flex-col items-center justify-center text-gray-500 pb-28">
+                        <div className="w-20 h-20 bg-gray-800 rounded-full flex items-center justify-center mb-4"><i className="fas fa-comments text-3xl opacity-50 text-teal-500"></i></div>
+                        <h3 className="font-bold text-gray-400">No Chat Selected</h3>
+                        <p className="text-xs mt-1 text-gray-500">Open a job to start chatting.</p>
+                        <button onClick={() => setActiveTab('jobs')} className="mt-6 px-6 py-2 bg-gray-800 text-teal-400 border border-gray-700 rounded-xl font-bold text-xs">Go to Jobs</button>
+                    </div>
+                )}
+                
+                {activeTab === 'profile' && (
+                    <div className="px-6 pt-10 pb-28 flex-1 flex flex-col">
+                        <h2 className="text-2xl font-bold mb-6">Pro Dashboard</h2>
+                        {isEditingProfile ? (<form onSubmit={handleSaveProfile} className="bg-gray-800 p-6 rounded-3xl mb-6"><h3 className="font-bold mb-4 text-teal-400 border-b border-gray-700 pb-2">Edit Public Profile</h3><div className="mb-4"><label className="text-xs text-gray-400 font-bold">Headline (e.g., Expert Electrician)</label><input type="text" value={editForm.headline || ''} onChange={e => setEditForm({...editForm, headline: e.target.value})} className="w-full bg-gray-700 border-none p-3 rounded-xl mt-1 text-sm text-white outline-none focus:ring-1 focus:ring-teal-500" /></div><div className="mb-4"><label className="text-xs text-gray-400 font-bold">Category</label><select value={editForm.category || ''} onChange={e => setEditForm({...editForm, category: e.target.value})} className="w-full bg-gray-700 border-none p-3 rounded-xl mt-1 text-sm text-white outline-none"><option value="cleaning">Cleaning</option><option value="electric">Electric</option><option value="plumbing">Plumbing</option><option value="ac">AC Repair</option><option value="tech">Tech & IT</option></select></div><div className="mb-6"><label className="text-xs text-gray-400 font-bold">Hourly Rate (₦)</label><input type="number" value={editForm.price || ''} onChange={e => setEditForm({...editForm, price: e.target.value})} className="w-full bg-gray-700 border-none p-3 rounded-xl mt-1 text-sm text-white outline-none focus:ring-1 focus:ring-teal-500" /></div><div className="flex gap-3"><button type="button" onClick={() => setIsEditingProfile(false)} className="flex-1 py-3 bg-gray-700 text-white rounded-xl font-bold text-sm">Cancel</button><button type="submit" disabled={isSaving} className="flex-1 py-3 bg-teal-600 text-white rounded-xl font-bold text-sm shadow-lg">{isSaving ? 'Saving...' : 'Save Profile'}</button></div></form>) : myProfile && (<div className="bg-gray-800 p-6 rounded-3xl flex flex-col items-center mb-6 text-center mt-auto"><img src={myProfile.avatar || `https://ui-avatars.com/api/?name=${myProfile.name.replace(/ /g,'+')}&background=0D8ABC&color=fff`} className="w-20 h-20 rounded-full object-cover mb-4 ring-2 ring-teal-500 ring-offset-2 ring-offset-gray-800" alt="Avatar" /><h3 className="text-xl font-bold">{myProfile.name}</h3><p className="text-teal-400 text-sm font-bold mb-3">{myProfile.headline || myProfile.title}</p><div className="flex gap-4 text-xs font-bold text-gray-400 mb-6"><span className="bg-gray-700 px-3 py-1 rounded-lg">₦{myProfile.price}/hr</span><span className="bg-gray-700 px-3 py-1 rounded-lg"><i className="fas fa-star text-orange-400 mr-1"></i> {myProfile.rating}</span></div><button onClick={() => setIsEditingProfile(true)} className="w-full py-3 bg-gray-700 text-white rounded-xl font-bold text-sm border border-gray-600 mb-3"><i className="fas fa-edit mr-2"></i> Edit Profile</button><button onClick={logout} className="w-full py-3 bg-red-500/10 text-red-500 font-bold rounded-xl border border-red-500/20"><i className="fas fa-sign-out-alt mr-2"></i> Log Out</button></div>)}
+                    </div>
+                )}
+            </div>
 
             {viewingMapForJob && (
               <div className="absolute inset-0 bg-gray-900 z-50 flex flex-col animate-[slideUp_0.3s_ease-out]">
