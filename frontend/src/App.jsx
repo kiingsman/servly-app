@@ -190,8 +190,6 @@ const ClientApp = ({ socket }) => {
   
   const [viewingProfile, setViewingProfile] = useState(null);
   const [bookingPro, setBookingPro] = useState(null);
-  
-  // FIX: Default time format must be 'HH:mm' for standard input type="time"
   const [bookingData, setBookingData] = useState({ date: '', time: '10:00', address: '' });
   const [isBookingSuccess, setIsBookingSuccess] = useState(false);
   
@@ -283,7 +281,6 @@ const ClientApp = ({ socket }) => {
   const toggleFavorite = async (e, proId) => { e.stopPropagation(); const isFav = favorites.includes(proId); const method = isFav ? 'DELETE' : 'POST'; try { const res = await fetch(`${backendUrl}/api/user/favorites/${proId}`, { method, headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` }}); const data = await res.json(); if (!res.ok) return alert(`Could not save pro`); setFavorites(Array.isArray(data) ? data : []); } catch(err) { console.error(err); } };
   const markNotificationsRead = () => { setShowNotifications(!showNotifications); if (!showNotifications && unreadCount > 0) { fetch(`${backendUrl}/api/notifications/read`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${localStorage.getItem('servly_token')}` } }); setNotifications(Array.isArray(notifications) ? notifications.map(n => ({...n, isRead: true})) : []); } };
   
-  // FIX: Convert 24-hour time to AM/PM formatting for the database and display
   const formatTimeAMPM = (time24) => {
       if (!time24) return '';
       const [h, m] = time24.split(':');
@@ -302,7 +299,7 @@ const ClientApp = ({ socket }) => {
                   professionalName: bookingPro.name, 
                   clientName: user.name, 
                   date: bookingData.date, 
-                  time: formatTimeAMPM(bookingData.time), // Saves perfectly as "10:00 AM" or "02:30 PM"
+                  time: formatTimeAMPM(bookingData.time), 
                   address: bookingData.address, 
                   totalPrice: bookingPro.price 
               }) 
@@ -345,7 +342,18 @@ const ClientApp = ({ socket }) => {
                 {showNotifications && (
                     <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden z-50">
                         <div className="p-3 bg-gray-50 border-b border-gray-100"><h3 className="font-bold text-sm text-gray-700">Notifications</h3></div>
-                        <div className="max-h-64 overflow-y-auto">{notifications.length === 0 ? (<p className="p-4 text-center text-sm text-gray-500">No notifications yet</p>) : (notifications.map(n => (<div key={n._id} className={`p-3 border-b border-gray-50 ${!n.isRead ? 'bg-teal-50/30' : ''}`}><h4 className="text-xs font-bold text-gray-800">{n.title}</h4><p className="text-xs text-gray-500 mt-1">{n.message}</p></div>))))}</div>
+                        <div className="max-h-64 overflow-y-auto">
+                            {notifications.length === 0 ? (
+                                <p className="p-4 text-center text-sm text-gray-500">No notifications yet</p>
+                            ) : (
+                                notifications.map(n => (
+                                    <div key={n._id} className={`p-3 border-b border-gray-50 ${!n.isRead ? 'bg-teal-50/30' : ''}`}>
+                                        <h4 className="text-xs font-bold text-gray-800">{n.title}</h4>
+                                        <p className="text-xs text-gray-500 mt-1">{n.message}</p>
+                                    </div>
+                                ))
+                            )}
+                        </div>
                     </div>
                 )}
             </div>
