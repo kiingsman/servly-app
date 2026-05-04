@@ -179,7 +179,6 @@ const AuthScreen = () => {
 // ==========================================
 // CLIENT DASHBOARD
 // ==========================================
-// PROPS NOW INCLUDE TOKEN
 const ClientApp = ({ socket, token }) => {
   const { user, login, logout } = useAuth();
   
@@ -215,8 +214,8 @@ const ClientApp = ({ socket, token }) => {
   
   const callLogic = useVideoCall(socket, activeChatRoom, user);
 
+  // FIX 1: Passed token directly from props into fetch calls
   useEffect(() => {
-      // FIX: Use the guaranteed state token instead of localStorage directly to prevent 401 null header errors
       fetch(`${backendUrl}/api/professionals`).then(res => res.json()).then(data => setProfessionals(Array.isArray(data) ? data : []));
       
       if (token) {
@@ -317,9 +316,9 @@ const ClientApp = ({ socket, token }) => {
           
           if (!res.ok) {
               const data = await res.json();
-              if (res.status === 401) {
+              if (res.status === 401 || res.status === 403) {
                   logout();
-                  alert('Session expired. Please log out and log back in.');
+                  alert('Session expired. Please log in again.');
               } else {
                   alert(data.message || 'Booking failed');
               }
@@ -440,7 +439,6 @@ const ClientApp = ({ socket, token }) => {
 // ==========================================
 // PROFESSIONAL DASHBOARD
 // ==========================================
-// PROPS NOW INCLUDE TOKEN
 const ProfessionalApp = ({ socket, token }) => {
     const { user, logout } = useAuth(); 
     const [activeTab, setActiveTab] = useState('jobs'); 
@@ -464,6 +462,7 @@ const ProfessionalApp = ({ socket, token }) => {
     const [editForm, setEditForm] = useState({}); 
     const [isSaving, setIsSaving] = useState(false);
     
+    // FIX 2: Passed token directly from props into Pro fetch calls
     useEffect(() => { 
         fetch(`${backendUrl}/api/professionals`).then(res => res.json()).then(data => { if(Array.isArray(data)) { const me = data.find(p => p.userId === user.id); if(me) { setMyProfile(me); setEditForm(me); } } }); 
         
@@ -579,7 +578,6 @@ const AppContent = () => {
         } 
     }, [user, token, socket]);
     if (!user) return <AuthScreen />;
-    // PASSED TOKEN INTO APPS HERE
     return user.role === 'professional' ? <ProfessionalApp socket={socket} token={token} /> : <ClientApp socket={socket} token={token} />;
 };
 
