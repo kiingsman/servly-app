@@ -4,6 +4,8 @@ import io from 'socket.io-client';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import { PushNotifications } from '@capacitor/push-notifications';
+import { Capacitor } from '@capacitor/core';
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -338,6 +340,34 @@ const ProfessionalApp = ({ socket, token }) => {
 
   useEffect(() => { notifAudio.current = new Audio(NOTIF_SOUND_URL); }, []);
   const playNotificationSound = () => { if (notifAudio.current) { notifAudio.current.currentTime = 0; const playPromise = notifAudio.current.play(); if (playPromise !== undefined) playPromise.catch(e => console.warn('Audio blocked', e)); } };
+
+  // --- NATIVE PUSH NOTIFICATION REGISTRATION ---
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      PushNotifications.requestPermissions().then(result => {
+        if (result.receive === 'granted') {
+          PushNotifications.register();
+        }
+      });
+
+      PushNotifications.addListener('registration', (tokenData) => {
+        console.log('Push registration success, token: ' + tokenData.value);
+        // Send this token to backend so backend can wake up this phone
+        fetch(`${backendUrl}/api/pro/device-token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ deviceToken: tokenData.value })
+        }).catch(err => console.log('Failed to save device token'));
+      });
+
+      PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        console.log('Push received: ', notification);
+        playNotificationSound();
+        // Here we can trigger the incoming job radar modal!
+      });
+    }
+  }, [token]);
+  // ---------------------------------------------
 
   useEffect(() => {
     if (socket && activeChatRoom) { socket.emit('join_room', activeChatRoom._id); const handleReconnect = () => socket.emit('join_room', activeChatRoom._id); socket.on('connect', handleReconnect); return () => socket.off('connect', handleReconnect); }

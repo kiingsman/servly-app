@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Servly</string>
+    <string name="title_activity_main">Servly</string>
+    <string name="package_name">com.servly.app</string>
+    <string name="custom_url_scheme">com.servly.app</string>
+</resources>
