@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "663776008178",
+    "project_id": "sevly-e1da6",
+    "storage_bucket": "sevly-e1da6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:663776008178:android:6f481a56ecea2be0d2bd6b",
+        "android_client_info": {
+          "package_name": "com.servly.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBKmMGcBtdLlwgNMWaibUTPy0dhbll5wno"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
