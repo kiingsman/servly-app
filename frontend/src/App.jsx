@@ -134,6 +134,25 @@ const ClientApp = ({ socket, token }) => {
   const notifAudio = useRef(null);
   const unreadCount = Array.isArray(notifications) ? notifications.filter(n => !n.isRead).length : 0;
   const [favorites, setFavorites] = useState(Array.isArray(user.favorites) ? user.favorites : []);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editForm, setEditForm] = useState({ name: user.name, email: user.email });
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    setIsSavingProfile(true);
+    try {
+      const res = await fetch(`${backendUrl}/api/user/profile`, { 
+        method: 'PUT', 
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, 
+        body: JSON.stringify(editForm) 
+      });
+      const data = await res.json();
+      if (!res.ok) return alert(data.message || 'Save failed');
+      login({ ...user, name: data.name, email: data.email }, token);
+      setIsEditingProfile(false);
+    } catch (err) { console.error(err); } finally { setIsSavingProfile(false); }
+  };
   const callLogic = useVideoCall(socket, activeChatRoom, user);
 
   useEffect(() => { notifAudio.current = new Audio(NOTIF_SOUND_URL); }, []);
@@ -177,7 +196,7 @@ const ClientApp = ({ socket, token }) => {
     <div className="bg-gray-50 w-full h-screen relative flex flex-col text-gray-900 overflow-hidden font-sans">
       <CallUI {...callLogic} />
       <div className="bg-white px-6 py-4 shadow-sm flex justify-between items-center z-20 shrink-0 w-full">
-        <div><h1 className="text-2xl font-black text-teal-600">Servly</h1><p className="text-xs text-gray-500 font-bold flex items-center"><i className="fas fa-map-marker-alt text-teal-500 mr-1"></i> Kano, NG</p></div>
+        <div><h1 onClick={() => setActiveTab('home')} className="text-2xl font-black text-teal-600 cursor-pointer hover:text-teal-700 transition">Servly</h1><p className="text-xs text-gray-500 font-bold flex items-center"><i className="fas fa-map-marker-alt text-teal-500 mr-1"></i> Kano, NG</p></div>
         <div className="flex items-center gap-3">
           <div className="relative">
             <button onClick={markNotificationsRead} className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 relative"><i className="fas fa-bell"></i>{unreadCount > 0 && <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>}</button>
@@ -233,8 +252,22 @@ const ClientApp = ({ socket, token }) => {
         {activeTab === 'profile' && (
           <div className="flex-1 overflow-y-auto px-6 pt-6 pb-28 flex flex-col w-full hide-scrollbar">
             <h2 className="text-2xl font-bold mb-6">Profile</h2>
-            <div className="w-full bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center mb-6"><input type="file" accept="image/*" className="hidden" ref={avatarInputRef} onChange={handleAvatarUpload} /><div className="relative mb-4"><img src={user.avatar || `https://ui-avatars.com/api/?name=${user.name.replace(/ /g, '+')}&background=0D8ABC&color=fff`} className="w-24 h-24 rounded-full object-cover shadow-md" alt="Avatar" /><button onClick={() => avatarInputRef.current.click()} className="absolute bottom-0 right-0 w-8 h-8 bg-teal-500 text-white rounded-full flex items-center justify-center border-2 border-white shadow-sm hover:bg-teal-600 transition"><i className="fas fa-camera text-xs"></i></button></div><h3 className="text-xl font-bold text-gray-800">{user.name}</h3><p className="text-sm text-gray-500">{user.email}</p></div>
-            <button onClick={logout} className="w-full py-4 bg-red-50 text-red-500 font-bold rounded-2xl border border-red-100 flex items-center justify-center hover:bg-red-100 transition"><i className="fas fa-sign-out-alt mr-2"></i> Log Out</button>
+            {isEditingProfile ? (
+              <form onSubmit={handleSaveProfile} className="w-full bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6">
+                <h3 className="font-bold mb-4 text-teal-600 border-b border-gray-50 pb-2">Edit Profile</h3>
+                <div className="mb-4 w-full"><label className="text-xs text-gray-500 font-bold">Full Name</label><input type="text" value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} required className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl mt-1 text-sm text-gray-800 outline-none focus:ring-1 focus:ring-teal-500" /></div>
+                <div className="mb-6 w-full"><label className="text-xs text-gray-500 font-bold">Email Address</label><input type="email" value={editForm.email} onChange={e => setEditForm({ ...editForm, email: e.target.value })} required className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl mt-1 text-sm text-gray-800 outline-none focus:ring-1 focus:ring-teal-500" /></div>
+                <div className="flex gap-3 w-full"><button type="button" onClick={() => setIsEditingProfile(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold text-sm hover:bg-gray-200 transition">Cancel</button><button type="submit" disabled={isSavingProfile} className="flex-1 py-3 bg-teal-600 text-white rounded-xl font-bold text-sm shadow-md hover:bg-teal-700 transition">{isSavingProfile ? 'Saving...' : 'Save Profile'}</button></div>
+              </form>
+            ) : (
+              <div className="w-full bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center mb-6">
+                <input type="file" accept="image/*" className="hidden" ref={avatarInputRef} onChange={handleAvatarUpload} />
+                <div className="relative mb-4"><img src={user.avatar || `https://ui-avatars.com/api/?name=${user.name.replace(/ /g, '+')}&background=0D8ABC&color=fff`} className="w-24 h-24 rounded-full object-cover shadow-md ring-2 ring-teal-50 ring-offset-2" alt="Avatar" /><button onClick={() => avatarInputRef.current.click()} className="absolute bottom-0 right-0 w-8 h-8 bg-teal-500 text-white rounded-full flex items-center justify-center border-2 border-white shadow-sm hover:bg-teal-600 transition"><i className="fas fa-camera text-xs"></i></button></div>
+                <h3 className="text-xl font-bold text-gray-800">{user.name}</h3><p className="text-sm text-gray-500 mb-6">{user.email}</p>
+                <button onClick={() => setIsEditingProfile(true)} className="w-full py-3 bg-gray-50 text-gray-700 font-bold rounded-xl border border-gray-200 mb-3 hover:bg-gray-100 transition"><i className="fas fa-edit mr-2"></i> Edit Profile</button>
+                <button onClick={logout} className="w-full py-3 bg-red-50 text-red-500 font-bold rounded-xl border border-red-100 flex items-center justify-center hover:bg-red-100 transition"><i className="fas fa-sign-out-alt mr-2"></i> Log Out</button>
+              </div>
+            )}
           </div>
         )}
       </div>

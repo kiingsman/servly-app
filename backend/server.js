@@ -93,7 +93,6 @@ io.on('connection', (socket) => {
         isRead: false 
       });
 
-      // Create a notification for the message recipient
       const booking = await Booking.findById(data.room);
       if (booking) {
         let recipientId;
@@ -136,13 +135,12 @@ io.on('connection', (socket) => {
     }
   });
 
-  // ---> NEW: Pass callType (voice or video) to the receiver
   socket.on('call_user', (data) => {
     socket.to(data.room).emit('incoming_call', {
       offer: data.offer,
       callerName: data.callerName,
       room: data.room,
-      callType: data.callType // This ensures the receiver knows it's a voice call
+      callType: data.callType
     });
   });
 
@@ -246,6 +244,37 @@ app.post('/api/login', async (req, res) => {
 // ==========================================
 // 5. USER ROUTES
 // ==========================================
+app.put('/api/user/profile', auth, async (req, res) => {
+  try {
+    const { name, email } = req.body;
+    
+    // Update the User document
+    const user = await User.findByIdAndUpdate(
+      getUserId(req),
+      { $set: { name, email } },
+      { new: true, runValidators: true }
+    );
+    
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    
+    // If this is a professional, ensure their Professional profile matches
+    if (user.role === 'professional') {
+      await Professional.findOneAndUpdate({ userId: user._id }, { name });
+    }
+    
+    res.json({ 
+      id: user._id, 
+      name: user.name, 
+      email: user.email, 
+      role: user.role, 
+      avatar: user.avatar, 
+      favorites: user.favorites 
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Update failed' });
+  }
+});
+
 app.post('/api/user/avatar', auth, upload.single('avatar'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No image provided' });
